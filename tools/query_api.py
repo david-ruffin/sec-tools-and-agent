@@ -33,7 +33,7 @@ def sec_filing_search(query):
             query = {
                 "query": query,
                 "from": "0",
-                "size": "10",
+                "size": "1",
                 "sort": [{"filedAt": {"order": "desc"}}]
             }
         elif isinstance(query, dict):

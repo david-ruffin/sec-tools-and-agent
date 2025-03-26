@@ -20,11 +20,58 @@ from langchain_openai import ChatOpenAI
 import os
 import sys
 from dotenv import load_dotenv
+import dateparser
+from datetime import datetime, timedelta
+import re
 
 # Load environment variables
 load_dotenv()
 SEC_API_KEY = os.getenv("SEC_API_KEY")
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+
+def resolve_relative_date_terms(query):
+    """Uses dateparser to handle relative date terms in SEC queries"""
+    # Define patterns for common date expressions
+    date_patterns = [
+        r'(latest|most\s+recent|current)\s+(10-[KQ]|annual|quarterly|report|filing)',
+        r'(last|this)\s+(year|quarter|month)',
+        r'\b(recent|latest)\b'
+    ]
+    
+    modified_query = query
+    date_context = {}
+    
+    for pattern in date_patterns:
+        matches = re.finditer(pattern, query, re.IGNORECASE)
+        for match in matches:
+            date_text = match.group(0)
+            # Use dateparser to understand the relative date
+            parsed_date = dateparser.parse(date_text, settings={'RELATIVE_BASE': datetime.now()})
+            
+            if parsed_date:
+                # Format for SEC API
+                if any(word in date_text.lower() for word in ['year', 'annual']):
+                    year = parsed_date.year
+                    date_range = f"filedAt:[{year}-01-01 TO {year}-12-31]"
+                    date_context["date_info"] = f"from {year}"
+                elif any(word in date_text.lower() for word in ['quarter', 'quarterly']):
+                    # For quarters, use a 3-month range
+                    end_date = parsed_date.strftime('%Y-%m-%d')
+                    start_date = (parsed_date - timedelta(days=90)).strftime('%Y-%m-%d')
+                    date_range = f"filedAt:[{start_date} TO {end_date}]"
+                    date_context["date_info"] = f"from {start_date} to {end_date}"
+                else:
+                    # Default to 180 days for "recent", "latest", etc.
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                    start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+                    date_range = f"filedAt:[{start_date} TO {end_date}]"
+                    date_context["date_info"] = f"from {start_date} to {end_date}"
+                
+                date_context["original_term"] = date_text
+                modified_query = modified_query.replace(date_text, date_range)
+                logger.info(f"Date resolver transformed: '{date_text}' => '{date_range}'")
+    
+    return modified_query, date_context
 
 def setup_agent():
     """Set up and return a langchain agent with SEC tools"""
@@ -67,6 +114,12 @@ If information cannot be found through the SEC-API tools provided to you, respon
 IMPORTANT QUERY FORMAT: 
 - When searching for SEC filings, use string queries like: "ticker:MSFT AND formType:\"10-K\" AND filedAt:[2023-01-01 TO 2023-12-31]"
 - For specific sections, common codes are: "1A" (Risk Factors), "7" (MD&A), "1" (Business)
+
+CRITICAL - DATE INFORMATION REQUIREMENT:
+- Always include the specific date information at the beginning of your response
+- When relative terms like "latest" or "most recent" are used, begin your response with: "Based on [company]'s [filing type] from [specific date/period]..."
+- This helps users understand exactly which filing you're referencing
+- NEVER omit this date information when relative time terms were used in the query
 
 For XBRL financial data:
 1. First get available statements (call without statement_type)
@@ -151,13 +204,25 @@ def main():
             # Log the user query
             log_user_interaction(question)
             
+            # Pre-process question for relative date terms
+            modified_question, date_context = resolve_relative_date_terms(question)
+            if modified_question != question:
+                logger.info(f"Modified question with date resolution: {modified_question}")
+            
             # Initialize a fresh agent for each question to reset context
             logger.info("Creating fresh agent instance to reset context")
             agent = setup_agent()
             
             # Process the question
-            logger.info(f"Agent processing question: {question}")
-            response = agent.invoke({"input": question})
+            logger.info(f"Agent processing question: {modified_question}")
+            
+            # Add date context information to the input if available
+            input_with_context = modified_question
+            if date_context and "date_info" in date_context:
+                orig_term = date_context.get("original_term", "relative date term")
+                input_with_context = f"{modified_question}\n\nCRITICAL INSTRUCTION: The query contained the term '{orig_term}', which refers to documents {date_context['date_info']}. You MUST begin your response with 'Based on [company]'s [filing type] {date_context['date_info']}...' to clearly indicate the time period that was searched."
+            
+            response = agent.invoke({"input": input_with_context})
             logger.info(f"Agent completed processing")
             
             # Log the agent's response

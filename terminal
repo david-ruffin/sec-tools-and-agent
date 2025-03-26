@@ -1,0 +1,2 @@
+head -n 20 @sec_floyd_2025-03-25_213540.log 
+ps aux | grep floyd 
