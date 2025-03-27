@@ -7,4 +7,5 @@
 2025-03-26: Provided git commands to add remote origin and push current work to a new branch '032625-Gemini2.5Pro'.
 2025-03-26: Created @suggestions.txt file and added entry regarding potential future implementation of Contextual Retrieval (HyDE) RAG.
 YYYY-MM-DD: Updated system prompt in sec_agent.py to include a summary of actions in the final response. Updated README.md accordingly.
-YYYY-MM-DD: Updated system prompt in sec_agent.py to instruct the agent to include the source filing URL in its final response summary. Updated README.md accordingly. 
+YYYY-MM-DD: Updated system prompt in sec_agent.py to instruct the agent to include the source filing URL in its final response summary. Updated README.md accordingly.
+YYYY-MM-DD: Implemented DetailedFileLoggerCallback (custom BaseCallbackHandler) in sec_agent.py to log detailed agent execution steps (LLM reasoning, tool calls, I/O) to file. Updated README.md. 

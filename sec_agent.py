@@ -1,12 +1,12 @@
 import os
 import json
 from dotenv import load_dotenv
-from typing import Optional, List, Dict, Any, Type
-from enum import Enum # Import Enum
+from typing import Optional, List, Dict, Any, Type, Union
 import logging # <-- Add logging
 import datetime # <-- Add datetime
 import pytz # <-- Add pytz
 import sys # <-- Import sys to handle command-line arguments
+from enum import Enum
 
 # Use Pydantic v2 directly
 from pydantic import BaseModel, Field
@@ -17,6 +17,11 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
+
+# --- Import LangChain Callback Components ---
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
+from langchain_core.agents import AgentAction, AgentFinish
 
 # --- Import SEC API Clients ---
 try:
@@ -98,23 +103,23 @@ mapping_api = MappingApi(api_key=SEC_API_KEY)
 xbrl_api = XbrlApi(api_key=SEC_API_KEY)
 logger.info("SEC API clients initialized.")
 
-# --- Define Tool Input Schemas using Pydantic v2 ---
-
-# Define Enum for sort order
+# --- Re-add Enum Definition ---
 class SortOrderEnum(str, Enum):
     asc = "asc"
     desc = "desc"
 
-# Define a clear structure for a single sort criterion
+# --- Re-add SortCriterion Definition ---
 class SortCriterion(BaseModel):
     field_name: str = Field(description="The name of the field to sort by (e.g., 'filedAt', 'periodOfReport').")
     order: SortOrderEnum = Field(description="The sort order: 'asc' for ascending, 'desc' for descending.")
+
+# --- Define Tool Input Schemas using Pydantic v2 ---
 
 class SearchFilingsInput(BaseModel):
     query: str = Field(description="Mandatory. The search query string using SEC-API query syntax (similar to Lucene). Examples: 'ticker:AAPL AND formType:\"10-K\"', 'formType:\"8-K\" AND items:\"1.01\" AND filedAt:[2023-01-01 TO 2023-12-31]'. Use specific fields like ticker, cik, formType, filedAt, periodOfReport, items, sic, etc.")
     start: int = Field(0, description="Optional. The starting index for results (pagination). Default is 0.")
     size: int = Field(10, description="Optional. The number of results to return (pagination). Default is 10. Max is typically 200, check sec-api docs.")
-    # Use the simplified List[SortCriterion] structure
+    # --- Reverted Sort Structure to use SortCriterion ---
     sort: Optional[List[SortCriterion]] = Field(None, description="Optional. How to sort results. Provide a list of sort criteria objects, each specifying a 'field_name' and 'order' ('asc' or 'desc'). Example: [{'field_name': 'filedAt', 'order': 'desc'}]")
 
 class ExtractSectionInput(BaseModel):
@@ -136,18 +141,20 @@ class GetXbrlDataInput(BaseModel):
 
 class SearchFilingsTool(BaseTool):
     name: str = "search_sec_filings"
+    # --- Update description slightly to match SortCriterion example format ---
     description: str = """
     Searches and filters SEC EDGAR filings based on various criteria like ticker, CIK, company name,
     form type (e.g., "10-K", "10-Q", "8-K", "13F-HR"), filing date, reporting period, SIC code, 8-K items, etc.
     Uses the SEC-API query syntax (like Lucene). Returns metadata about matching filings, including links.
     Crucial for finding relevant filings before extracting data.
-    Use `filedAt:[YYYY-MM-DD TO YYYY-MM-DD]` for date ranges.
+    Use `filedAt:[YYYY-MM-DD TO YYYY-MM-DD]` for specific date ranges.
     Use `periodOfReport:[YYYY-MM-DD TO YYYY-MM-DD]` for report period ranges.
     Combine criteria using AND/OR. Example: 'ticker:MSFT AND formType:"10-K" AND filedAt:[2023-01-01 TO 2023-12-31]'
-    Sorting might be limited to fields like 'filedAt'. Check sec-api documentation if unsure.
+    **IMPORTANT: When the user asks for the 'latest', 'most recent', or similar terms for a filing, you MUST include `sort: [{{'field_name': 'filedAt', 'order': 'desc'}}]` in your parameters and usually set `size: 1` to get only the single most recent result.** The tool defaults to sorting by 'filedAt' descending if no sort is specified, but explicitly setting it for 'latest' queries ensures correctness.
     """
     args_schema: Type[BaseModel] = SearchFilingsInput
 
+    # --- Adjust _run to convert SortCriterion list to API format ---
     def _run(self, query: str, start: int = 0, size: int = 10, sort: Optional[List[SortCriterion]] = None) -> str:
         """Use the tool."""
         try:
@@ -157,19 +164,19 @@ class SearchFilingsTool(BaseTool):
                 "size": str(size),
             }
             if sort:
-                # Ensure sort criteria are serializable for logging
+                # Convert the validated List[SortCriterion] to the format sec-api expects
+                api_sort = [{criterion.field_name: {"order": criterion.order.value}} for criterion in sort]
+                search_query["sort"] = api_sort
+                # Log the original SortCriterion objects for clarity
                 try:
                     sort_repr = json.dumps([criterion.dict() for criterion in sort])
                 except Exception:
                     sort_repr = "[unserializable sort object]"
-                api_sort = [{criterion.field_name: {"order": criterion.order.value}} for criterion in sort]
-                search_query["sort"] = api_sort
                 logger.info(f"SearchFilingsTool called with query: {query}, start: {start}, size: {size}, sort: {sort_repr}")
             else:
                 search_query["sort"] = [{"filedAt": {"order": "desc"}}] # Default sort
                 logger.info(f"SearchFilingsTool called with query: {query}, start: {start}, size: {size}, sort: Default (filedAt desc)")
 
-            # print(f"\n>> Calling SearchFilingsTool with query: {search_query}") // Replaced
             logger.debug(f"Constructed API search query: {search_query}")
             filings = query_api.get_filings(search_query)
             logger.debug(f"API response received (type: {type(filings).__name__})")
@@ -393,15 +400,140 @@ class GetXbrlDataTool(BaseTool):
             logger.exception(error_msg)
             return f"Error executing get_xbrl_data_as_json: {e}. Ensure the filing has XBRL data and the identifier is correct."
 
+# --- Define Custom Callback Handler for Detailed Logging ---
+
+class SmartFileLoggerCallback(BaseCallbackHandler):
+    """Enhanced callback handler with configurable logging levels"""
+    
+    def __init__(self, log_dir: str = "logs", log_level: str = "INFO"):
+        """
+        Initialize the callback handler
+        
+        Args:
+            log_dir (str): Directory to store log files
+            log_level (str): Logging level (DEBUG, INFO, etc.)
+        """
+        # Create logs directory if it doesn't exist
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Set up logging configuration
+        self.log_level = getattr(logging, log_level.upper())
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%Z")
+        log_file = os.path.join(log_dir, f"log_{timestamp}.log")
+        
+        # Configure logging
+        logging.basicConfig(
+            level=self.log_level,
+            format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()  # Also log to console
+            ]
+        )
+        
+        self.logger = logging.getLogger(__name__)
+        self.chain_depth = 0
+        self.important_chains = {
+            "AgentExecutor",
+            "LLMChain",
+            "SearchFilingsTool",
+            "ExtractSectionTool"
+        }
+
+    def _should_log_chain(self, serialized: Dict[str, Any]) -> bool:
+        """Determine if this chain should be logged based on logging level"""
+        chain_name = serialized.get('name', '<unknown_chain>')
+        if self.log_level <= logging.DEBUG:
+            return True
+        return chain_name in self.important_chains
+
+    def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs) -> None:
+        """Log chain starts with proper indentation and filtering"""
+        if self._should_log_chain(serialized):
+            chain_name = serialized.get('name', '<unknown_chain>')
+            indent = "  " * self.chain_depth
+            
+            # Format inputs for better readability
+            input_str = self._format_inputs(inputs)
+            
+            self.logger.log(
+                logging.DEBUG if chain_name == '<unknown_chain>' else logging.INFO,
+                f"{indent}Chain Start: {chain_name}\n{indent}Inputs: {input_str}"
+            )
+        self.chain_depth += 1
+
+    def on_chain_end(self, outputs: Dict[str, Any], **kwargs) -> None:
+        """Log chain ends with proper indentation and filtering"""
+        self.chain_depth -= 1
+        if self.log_level <= logging.DEBUG or self.chain_depth == 0:
+            indent = "  " * self.chain_depth
+            output_str = self._format_outputs(outputs)
+            self.logger.info(f"{indent}Chain End: {output_str}")
+
+    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
+        """Log tool usage with detailed information"""
+        tool_name = serialized.get('name', '<unknown_tool>')
+        self.logger.info(f"Tool Start: {tool_name}\nInput: {input_str}")
+
+    def on_tool_end(self, output: str, **kwargs) -> None:
+        """Log tool completion with truncated output"""
+        preview = output[:200] + "..." if len(output) > 200 else output
+        self.logger.info(f"Tool End: {preview}")
+
+    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs) -> None:
+        """Log LLM calls with optional prompt logging"""
+        if self.log_level <= logging.DEBUG:
+            self.logger.debug(f"LLM Start: {serialized.get('name', 'unknown')}\nPrompts: {prompts}")
+        else:
+            self.logger.info("LLM Start: Processing request...")
+
+    def on_llm_end(self, response, **kwargs) -> None:
+        """Log LLM completion"""
+        if self.log_level <= logging.DEBUG:
+            self.logger.debug(f"LLM End: {response}")
+        else:
+            self.logger.info("LLM End: Response received")
+
+    def on_agent_action(self, action: str, input_str: str, **kwargs) -> None:
+        """Log agent decisions"""
+        self.logger.info(f"Agent Action: {action}\nInput: {input_str}")
+
+    def _format_inputs(self, inputs: Dict[str, Any]) -> str:
+        """Format input dictionary for readable logging"""
+        try:
+            return json.dumps(inputs, indent=2)
+        except:
+            return str(inputs)
+
+    def _format_outputs(self, outputs: Dict[str, Any]) -> str:
+        """Format output dictionary for readable logging"""
+        try:
+            # Truncate long outputs
+            formatted = {}
+            for k, v in outputs.items():
+                if isinstance(v, str) and len(v) > 200:
+                    formatted[k] = v[:200] + "..."
+                else:
+                    formatted[k] = v
+            return json.dumps(formatted, indent=2)
+        except:
+            return str(outputs)
+
+    def on_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs) -> None:
+        """Log errors with full traceback in debug mode"""
+        if self.log_level <= logging.DEBUG:
+            self.logger.exception("Error occurred during execution:", exc_info=error)
+        else:
+            self.logger.error(f"Error: {str(error)}")
 
 # --- Set up LLM and Agent ---
 llm = ChatGoogleGenerativeAI(
-    # model="gemini-1.5-pro-latest",
-    model="gemini-1.5-flash-latest",
+    # model="gemini-1.5-flash-latest", # Switched from Flash
+    model="gemini-1.5-pro-latest",   # Switched to Pro
     google_api_key=GOOGLE_API_KEY,
     temperature=0,
 )
-logger.info("Initializing LLM.") # Added specific log
+logger.info(f"Initializing LLM with model: {llm.model}") # More specific log
 
 tools = [
     SearchFilingsTool(),
@@ -411,7 +543,7 @@ tools = [
 ]
 logger.info("Tools initialized.") # Added specific log
 
-# Updated prompt with more specific guidance for section extraction, final answer summary, and URL inclusion
+# Updated prompt with guidance for "latest" queries and escaped braces
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", """You are a helpful financial analyst assistant specializing in SEC filings.
@@ -420,8 +552,10 @@ map company identifiers (like ticker to CIK), and extract structured XBRL financ
 
 **Tool Usage Strategy:**
 
-1.  **Identify Goal:** Understand what specific information the user needs (e.g., risk factors, revenue policy, specific financial number, acquisition details, executive changes).
-2.  **Find Filing(s):** Use `search_sec_filings`. Be specific with `query` parameters (ticker, formType, dates). Default sort is `filedAt` descending (latest first). **Note the `linkToFilingDetails` or `linkToHtml` (filing URL) and the `formType` from the search results.**
+1.  **Identify Goal:** Understand what specific information the user needs (e.g., risk factors, revenue policy, specific financial number, acquisition details, executive changes). Pay attention to terms like 'latest' or 'most recent'.
+2.  **Find Filing(s):** Use `search_sec_filings`. Be specific with `query` parameters (ticker, formType, dates).
+    *   **If the user asks for the 'latest' or 'most recent' filing:** You MUST explicitly add `sort: [{{'field_name': 'filedAt', 'order': 'desc'}}]` and usually `size: 1` to the `search_sec_filings` call to ensure you retrieve only the single most recent filing matching the criteria.
+    *   Note the `linkToFilingDetails` or `linkToHtml` (filing URL) and the `formType` from the search results.
 3.  **Extract Information:** Use `extract_filing_section` with the `filing_url` from the search results. Choose the `section` parameter carefully based on the `formType` of the filing and the information needed, using the exact identifiers listed below.
     *   **IMPORTANT:** If the section might be long and you need specific details, pass the original user query to the `user_query` parameter of the `extract_filing_section` tool. This helps retrieve the most relevant parts.
 
@@ -488,11 +622,11 @@ map company identifiers (like ticker to CIK), and extract structured XBRL financ
 *   Then, provide the detailed answer based on the tool results.
 *   If information couldn't be found or a tool failed, clearly state that in the summary and the main answer.
 
-**Example Workflow (10-Q Risk Factors):**
+**Example Workflow (Latest 10-Q Risk Factors):**
 User: "What are the latest risk factors mentioned in MSFT's 10-Q?"
-1. `search_sec_filings` (query='ticker:MSFT AND formType:"10-Q"', size=1) -> Get URL (e.g., `https://www.sec.gov/.../msft-10q_20230930.htm`) and confirm formType is "10-Q".
-2. `extract_filing_section` (filing_url=URL, section='part2item1a') -> Get text of Risk Factors for the 10-Q.
-3. Formulate answer starting with: "Based on searching for MSFT's latest 10-Q filing and extracting section 'part2item1a' (Risk Factors) from the filing dated [Date] ([URL]), here are the key points..." followed by the details.
+1. `search_sec_filings` (query='ticker:MSFT AND formType:"10-Q"', size=1, sort=[{{'field_name': 'filedAt', 'order': 'desc'}}]) -> Get URL (e.g., `https://www.sec.gov/.../msft-10q_20230930.htm`) and confirm formType is "10-Q".
+2. `extract_filing_section` (filing_url=URL, section='part2item1a', user_query="latest risk factors") -> Get text of Risk Factors for the latest 10-Q.
+3. Formulate answer starting with: "Based on searching for MSFT's latest 10-Q filing (dated [Date], URL: [URL]) and extracting section 'part2item1a' (Risk Factors), here are the key points..." followed by the details.
 """),
         ("user", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
@@ -500,33 +634,54 @@ User: "What are the latest risk factors mentioned in MSFT's 10-Q?"
 )
 logger.info("Prompt template created.") # Added specific log
 
+# Get log level from environment variable or default to INFO
+log_level = os.getenv("SEC_AGENT_LOG_LEVEL", "INFO")
+
+# Initialize the callback handler
+callback = SmartFileLoggerCallback(
+    log_dir="logs",
+    log_level=log_level
+)
+
+# Create your agent with the callback
 agent = create_tool_calling_agent(llm, tools, prompt)
 logger.info("Agent created.") # Added specific log
 
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
-    verbose=True, # Keep LangChain's verbose output for agent steps
-    handle_parsing_errors=True # Helps agent recover from LLM output errors
+    verbose=True, # Keep console verbose output for comparison if needed
+    handle_parsing_errors=True,
+    # Return intermediate steps allows inspection later if needed, but callbacks are primary
+    return_intermediate_steps=False
     )
 
 logger.info("AgentExecutor created.")
 
 # --- Main Interaction Loop ---
 if __name__ == "__main__":
+    # Use the callback instance created earlier
+    callbacks_list = [callback]
+
     # Check if command-line arguments are provided
     if len(sys.argv) > 1:
         # Join arguments (excluding script name) to form the query
         user_query = " ".join(sys.argv[1:])
         logger.info(f"Received user query from command-line arguments: {user_query}")
         try:
-            # Execute the agent once with the provided query
-            response = agent_executor.invoke({"input": user_query})
+            # Execute the agent once with the provided query AND the callback
+            response = agent_executor.invoke(
+                {"input": user_query},
+                config={"callbacks": callbacks_list} # Pass callbacks here
+            )
+            # Log final response output AFTER agent execution finishes
             logger.info(f"Agent final response output: {response.get('output', 'N/A')}")
             # Print the final response to the console
             print(f"\nAssistant:\n{response.get('output', 'Error: No output found.')}")
         except Exception as e:
-            logger.exception(f"An error occurred during agent execution for command-line query: {e}")
+            # Log exception using the logger, which will include traceback via callback
+            # logger.exception(f"An error occurred during agent execution for command-line query: {e}")
+            # The callback's on_chain_error should handle logging the exception
             print(f"\nAssistant: An error occurred: {e}") # Also inform user on console
     else:
         # No command-line arguments, start the interactive loop
@@ -543,18 +698,23 @@ if __name__ == "__main__":
             if not user_query:
                 continue
 
-            logger.info(f"Received user query from input: {user_query}") # Clarified source
+            logger.info(f"Received user query from input: {user_query}")
             try:
-                # Use invoke for synchronous execution
-                response = agent_executor.invoke({"input": user_query})
+                # Use invoke for synchronous execution WITH the callback
+                response = agent_executor.invoke(
+                    {"input": user_query},
+                    config={"callbacks": callbacks_list} # Pass callbacks here
+                )
+                # Log final response output AFTER agent execution finishes
                 logger.info(f"Agent final response output: {response.get('output', 'N/A')}")
                 # AgentExecutor with verbose=True already prints steps; avoid double printing response.
                 # If verbose=False, uncomment the print below:
                 print(f"\nAssistant:\n{response.get('output', 'Error: No output found.')}")
 
             except Exception as e:
-                # Catch broader exceptions during agent execution
-                logger.exception(f"An error occurred during agent execution: {e}")
+                # Log exception using the logger, which will include traceback via callback
+                # logger.exception(f"An error occurred during agent execution: {e}")
+                # The callback's on_chain_error should handle logging the exception
                 print(f"\nAssistant: An error occurred: {e}") # Also inform user on console
 
-        logger.info("Exited main execution.") # Updated exit message
+        logger.info("Exited main execution.")

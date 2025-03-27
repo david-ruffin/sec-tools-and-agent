@@ -13,7 +13,7 @@ The primary goal is to allow users (potentially financial analysts or researcher
 ## 2. Core Features
 
 *   **Natural Language Querying:** Users can ask questions in plain English.
-*   **SEC Filing Search:** Utilizes `sec_api.QueryApi` to search for specific filings based on criteria like ticker, CIK, form type, filing dates, etc. (`SearchFilingsTool`).
+*   **SEC Filing Search:** Utilizes `sec_api.QueryApi` to search for specific filings based on criteria like ticker, CIK, form type, filing dates, etc. (`SearchFilingsTool`). Handles requests for "latest" filings using API-level sorting.
 *   **Section Extraction:** Utilizes `sec_api.ExtractorApi` to extract specific, standardized sections from filings (e.g., '1A' - Risk Factors, 'part1item1' - Financial Statements) based on the filing's URL and the correct section identifier (`ExtractSectionTool`).
 *   **Retrieval-Augmented Generation (RAG):** When extracting text sections (`return_type='text'`) that exceed a predefined length limit (currently 15,000 characters), the `ExtractSectionTool` automatically:
     *   Chunks the extracted text using `RecursiveCharacterTextSplitter`.
@@ -28,6 +28,7 @@ The primary goal is to allow users (potentially financial analysts or researcher
 *   **Command-Line Interface:** Accepts user queries directly as command-line arguments for single-shot execution.
 *   **Interactive Mode:** Falls back to an interactive loop if no command-line arguments are provided, allowing multiple questions per session.
 *   **Detailed File Logging:** Logs execution steps, tool calls, RAG process details, API responses (counts), errors, and final outputs to timestamped files in a `logs/` directory using Python's `logging` module and `pytz` for PST timestamps.
+    *   **Enhanced Traceability:** Utilizes a custom LangChain `BaseCallbackHandler` (`DetailedFileLoggerCallback`) to capture detailed intermediate steps of the agent's execution, including LLM prompts/responses, agent actions (tool selection with reasoning), and tool inputs/outputs, providing a comprehensive execution trace in the log files for debugging and analysis.
 
 ## 3. Technology Stack
 
@@ -126,6 +127,7 @@ The script can be run in two modes:
     *   `description`: Detailed description for the LLM on when and how to use the tool.
     *   `args_schema`: Links to the Pydantic input schema.
     *   `_run`: The core logic that executes when the tool is called, including API interactions, RAG logic (for `ExtractSectionTool`), error handling, and logging.
+*   **Custom Callback Handler (`DetailedFileLoggerCallback`):** Inherits from `BaseCallbackHandler` and implements `on_...` methods to log detailed agent execution steps (LLM interactions, agent actions/reasoning, tool start/end/output) to the file logger.
 *   **LLM and Agent Setup:**
     *   Initializes the `ChatGoogleGenerativeAI` model.
     *   Creates the list of `tools`.
@@ -133,10 +135,11 @@ The script can be run in two modes:
     *   Creates the agent using `create_tool_calling_agent`.
     *   Creates the `AgentExecutor` to run the agent-tool loop.
 *   **Main Execution Block (`if __name__ == "__main__":`)**:
+    *   Instantiates the `DetailedFileLoggerCallback`.
     *   Checks for command-line arguments (`sys.argv`).
-    *   If arguments exist, runs the `agent_executor.invoke` once with the combined arguments as input.
-    *   If no arguments exist, enters the `while True` loop for interactive input.
-    *   Handles user input, calls `agent_executor.invoke`, prints the final output, and includes basic error handling.
+    *   If arguments exist, runs the `agent_executor.invoke` once with the combined arguments as input, passing the callback handler via the `config` parameter.
+    *   If no arguments exist, enters the `while True` loop for interactive input, passing the callback handler to `agent_executor.invoke` in each iteration.
+    *   Handles user input, calls `agent_executor.invoke`, prints the final output, and includes basic error handling (relying on the callback for detailed error logging).
 
 ## 8. Logging Details
 
@@ -162,3 +165,133 @@ Based on development discussions, potential next steps include:
 ## 10. License
 
 (Specify License Here - e.g., MIT License, Apache 2.0, or "Proprietary") 
+
+This agent uses LangChain, Google Gemini, and the SEC-API.io service to answer questions about SEC filings. It can search for filings, extract specific sections, and retrieve structured XBRL data.
+
+## Features
+
+*   Searches SEC filings using various criteria (ticker, form type, dates, etc.).
+*   Extracts specific sections (e.g., Item 1A Risk Factors, MD&A) from 10-K, 10-Q, and 8-K filings.
+*   Retrieves structured financial data from XBRL filings.
+*   Uses Retrieval-Augmented Generation (RAG) to handle long document sections.
+*   Configurable logging for development and production.
+
+## Capabilities and Limitations
+
+**What it is:** An AI-powered tool designed to quickly find and extract specific information from SEC filings. It uses Google's latest AI (Gemini 1.5 Pro) combined with a specialized service (sec-api.io) that accesses EDGAR data.
+
+**What it can do reliably right now:**
+
+1. **Find Filings:** Given a company ticker, form type (like 10-K, 10-Q, 8-K), and date range, it can search and find the relevant filings, including the direct links. It's specifically tuned to handle requests for the 'latest' filing correctly.
+
+2. **Extract Key Sections:** For 10-K, 10-Q, and 8-K filings, it can pull out specific, predefined sections like 'Item 1A - Risk Factors', 'Item 7 - MD&A', or specific 8-K items (e.g., 'Item 5.02 - Officer Changes').
+
+3. **Handle Long Text:** If a requested section (like Risk Factors) is very long, it uses a technique (RAG) to intelligently pull out the most relevant paragraphs related to the user's original question, rather than just dumping the whole section.
+
+4. **Pull Standard Financial Data:** If a filing includes structured XBRL data, it can extract standard financial statement figures (like Revenue from the Income Statement, or assets from the Balance Sheet).
+
+5. **Provide Sources:** In its answers, it clearly states which filing URL it used to get the information, allowing for verification.
+
+**Think of it like this:** It's like a very fast research assistant who is excellent at fetching specific documents (10-Ks, 10-Qs, 8-Ks) and pulling out specific, pre-defined paragraphs or standard financial table numbers when asked.
+
+**What it can't do reliably yet (Current Limitations):**
+
+1. **Limited Form/Section Scope:** It only understands the structure of 10-Ks, 10-Qs, and 8-Ks for extraction. It can find other forms (like S-1s, DEF 14As), but it can't intelligently extract information from them yet. It also only knows the specific section codes we've defined (like '1A', '7', 'part1item2').
+
+2. **Deep Analysis:** It retrieves and summarizes information; it doesn't perform complex financial analysis, compare trends across multiple filings, or interpret the meaning behind the numbers or text in a nuanced way.
+
+3. **API Dependency:** Its accuracy is tied to the accuracy and availability of the underlying sec-api.io service.
+
+4. **RAG Nuances:** While RAG helps with long text, it's retrieving excerpts. It might occasionally miss context or details found elsewhere in the full section.
+
+5. **Occasional AI Errors:** Like any AI, it can sometimes misunderstand a query or make a mistake in how it uses the tools, though we've put guardrails in place.
+
+**In summary:** We have a solid foundation. It's effective for targeted retrieval of specific, known data points and sections from the most common periodic and current reports (10-K, 10-Q, 8-K). It's not yet a general-purpose SEC expert that can answer any question about any filing, but it's a valuable tool for the specific tasks it's designed for at this stage.
+
+## Setup
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <your-repo-url>
+    cd <your-repo-directory>
+    ```
+2.  **Create a virtual environment:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate # On Windows use `.venv\Scripts\activate`
+    ```
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **Set up environment variables:**
+    Create a `.env` file in the project root and add your API keys:
+    ```dotenv
+    SEC_API_KEY="your_sec_api_io_key"
+    GOOGLE_API_KEY="your_google_ai_studio_key"
+    # Optional: Set default log level (INFO or DEBUG)
+    # SEC_AGENT_LOG_LEVEL="INFO"
+    ```
+
+## Usage
+
+The agent can be run interactively or by passing a query as a command-line argument.
+
+**Logging Levels:**
+
+The detail level of the logs can be controlled using the `SEC_AGENT_LOG_LEVEL` environment variable.
+
+*   **Development (DEBUG):** Shows detailed internal steps, including all chain executions and full LLM prompts. Useful for debugging.
+*   **Production (INFO):** Shows key actions, tool usage, final results, and errors. Keeps logs cleaner.
+
+**Running Interactively:**
+
+*   **Development:**
+    ```bash
+    export SEC_AGENT_LOG_LEVEL=DEBUG # On Windows use `set SEC_AGENT_LOG_LEVEL=DEBUG`
+    python sec_agent.py
+    ```
+    Then type your questions at the prompt. Type `quit` to exit.
+
+*   **Production:**
+    ```bash
+    export SEC_AGENT_LOG_LEVEL=INFO # On Windows use `set SEC_AGENT_LOG_LEVEL=INFO`
+    python sec_agent.py
+    ```
+    Then type your questions at the prompt. Type `quit` to exit.
+
+**Running with a Command-Line Query:**
+
+*   **Development:**
+    ```bash
+    export SEC_AGENT_LOG_LEVEL=DEBUG # On Windows use `set SEC_AGENT_LOG_LEVEL=DEBUG`
+    python sec_agent.py "Your query about SEC filings here"
+    ```
+
+*   **Production:**
+    ```bash
+    export SEC_AGENT_LOG_LEVEL=INFO # On Windows use `set SEC_AGENT_LOG_LEVEL=INFO`
+    python sec_agent.py "Your query about SEC filings here"
+    ```
+
+**Benefits of the Logging System:**
+
+*   **Detailed Debugging:** Use `DEBUG` level when developing or troubleshooting.
+*   **Clean Production Logs:** Use `INFO` level for normal operation.
+*   **Easy Configuration:** Switch between levels easily using the environment variable without changing code.
+
+## Tools
+
+*   `search_sec_filings`: Finds filings based on criteria.
+*   `extract_filing_section`: Extracts specific sections (e.g., '1A', '7', 'part1item2').
+*   `map_sec_identifiers`: Maps between Ticker, CIK, Name, etc.
+*   `get_xbrl_data_as_json`: Parses XBRL data into JSON.
+
+## Logging
+
+Logs are stored in the `logs/` directory with timestamped filenames (using PST). The `SmartFileLoggerCallback` provides detailed tracing of agent execution, configurable via the `SEC_AGENT_LOG_LEVEL` environment variable.
+
+## Roadmap & History
+
+*   See `@roadmap.txt` for the project goals and tasks.
+*   See `@history.txt` for a log of changes made. 
