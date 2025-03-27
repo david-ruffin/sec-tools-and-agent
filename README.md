@@ -208,6 +208,34 @@ This agent uses LangChain, Google Gemini, and the SEC-API.io service to answer q
 
 **In summary:** We have a solid foundation. It's effective for targeted retrieval of specific, known data points and sections from the most common periodic and current reports (10-K, 10-Q, 8-K). It's not yet a general-purpose SEC expert that can answer any question about any filing, but it's a valuable tool for the specific tasks it's designed for at this stage.
 
+## Sample Questions
+
+### Questions the Agent Can Answer Well:
+
+1. "What are the key risk factors mentioned in Apple's latest 10-K filing?"
+2. "Find Tesla's most recent quarterly report and extract the MD&A section."
+3. "What was Amazon's revenue for the fiscal year ending in 2022 according to their 10-K?"
+4. "Has Microsoft disclosed any cybersecurity risks in their latest 10-K?"
+5. "What major executive changes did Netflix announce in their 8-K filings during 2023?"
+6. "Extract the legal proceedings section from Meta's most recent 10-K filing."
+7. "What is the CIK number for Google's parent company Alphabet?"
+8. "What accounting policies does Walmart use for inventory according to their latest 10-K?"
+9. "Find the most recent 10-Q for JPMorgan Chase and summarize the risk factors."
+10. "What significant acquisitions did Salesforce announce in their 8-K filings in 2022?"
+
+### Questions Currently Beyond the Agent's Capabilities:
+
+1. "Compare the cybersecurity risk disclosures across the top 5 tech companies' 10-K filings."
+2. "Analyze Apple's R&D spending trends over the past 5 years and how it compares to industry peers."
+3. "Find all Form 4 filings showing insider sales by Amazon executives in 2023."
+4. "Extract the compensation discussion from Disney's latest proxy statement (DEF 14A)."
+5. "Identify companies that have reported a material weakness in internal controls in their 10-K filings this year."
+6. "Compare the climate risk disclosures in Exxon's latest 10-K with previous years to identify changes in approach."
+7. "Analyze the S-1 registration statement for the most recent tech IPO and summarize the business model."
+8. "Find Form 13F filings to determine which hedge funds have increased their holdings in NVIDIA this quarter."
+9. "What patterns emerge from comparing the MD&A sections across all major U.S. banks during the 2008 financial crisis?"
+10. "Analyze the relationship between companies' risk disclosures and subsequent stock performance over a 5-year period."
+
 ## Setup
 
 1.  **Clone the repository:**
