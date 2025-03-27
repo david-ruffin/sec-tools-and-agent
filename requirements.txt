@@ -1,0 +1,12 @@
+# Base dependencies
+python-dotenv
+sec-api
+langchain
+langchain-google-genai
+pytz # For timezone-aware logging
+
+# RAG dependencies
+langchain-text-splitters
+langchain-community # For FAISS vector store
+google-generativeai # Implicit dependency for embeddings, good to list
+faiss-cpu # Added for FAISS vector store (CPU version) 
