@@ -1,0 +1,10 @@
+2025-03-26: Diagnosed ModuleNotFoundError for 'faiss' during RAG vector store creation based on log review. Instructed user to install 'faiss-cpu' and update requirements.txt.
+2025-03-26: Reviewed new log, confirmed FAISS installation successful and basic RAG pipeline functional. Identified issue: agent not passing original user query to ExtractSectionTool. Updated system prompt in sec_agent.py to explicitly instruct the agent to pass the user query.
+2025-03-26: Modified sec_agent.py to accept user queries via command-line arguments using the `sys` module. Falls back to interactive mode if no arguments are provided.
+2025-03-26: Reviewed log from command-line execution. Confirmed agent successfully passed user query context to ExtractSectionTool, enabling context-aware RAG retrieval as intended.
+2025-03-26: Created README.md providing a detailed overview of the project, setup, usage, and future roadmap ideas.
+2025-03-26: Created .gitignore file with standard Python project exclusions.
+2025-03-26: Provided git commands to add remote origin and push current work to a new branch '032625-Gemini2.5Pro'.
+2025-03-26: Created @suggestions.txt file and added entry regarding potential future implementation of Contextual Retrieval (HyDE) RAG.
+YYYY-MM-DD: Updated system prompt in sec_agent.py to include a summary of actions in the final response. Updated README.md accordingly.
+YYYY-MM-DD: Updated system prompt in sec_agent.py to instruct the agent to include the source filing URL in its final response summary. Updated README.md accordingly. 

@@ -411,7 +411,7 @@ tools = [
 ]
 logger.info("Tools initialized.") # Added specific log
 
-# Updated prompt with more specific guidance for section extraction
+# Updated prompt with more specific guidance for section extraction, final answer summary, and URL inclusion
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", """You are a helpful financial analyst assistant specializing in SEC filings.
@@ -421,9 +421,9 @@ map company identifiers (like ticker to CIK), and extract structured XBRL financ
 **Tool Usage Strategy:**
 
 1.  **Identify Goal:** Understand what specific information the user needs (e.g., risk factors, revenue policy, specific financial number, acquisition details, executive changes).
-2.  **Find Filing(s):** Use `search_sec_filings`. Be specific with `query` parameters (ticker, formType, dates). Default sort is `filedAt` descending (latest first). **Determine the `formType` (e.g., "10-K", "10-Q", "8-K") from the search results.**
-3.  **Extract Information:** Use `extract_filing_section` with the `filing_url` from the search results. **Choose the `section` parameter carefully based on the `formType` of the filing and the information needed, using the exact identifiers listed below.**
-    *   **IMPORTANT:** If the section might be long and you need specific details, **pass the original user query to the `user_query` parameter** of the `extract_filing_section` tool. This helps retrieve the most relevant parts.
+2.  **Find Filing(s):** Use `search_sec_filings`. Be specific with `query` parameters (ticker, formType, dates). Default sort is `filedAt` descending (latest first). **Note the `linkToFilingDetails` or `linkToHtml` (filing URL) and the `formType` from the search results.**
+3.  **Extract Information:** Use `extract_filing_section` with the `filing_url` from the search results. Choose the `section` parameter carefully based on the `formType` of the filing and the information needed, using the exact identifiers listed below.
+    *   **IMPORTANT:** If the section might be long and you need specific details, pass the original user query to the `user_query` parameter of the `extract_filing_section` tool. This helps retrieve the most relevant parts.
 
     **Supported Sections for `extract_filing_section`:**
 
@@ -477,14 +477,22 @@ map company identifiers (like ticker to CIK), and extract structured XBRL financ
 
     *   **Note:** When looking for specific details like Accounting Policies, Revenue Recognition, or Cybersecurity disclosures within financial statements, extract the main financial statement section (`'8'` for 10-K, `'part1item1'` for 10-Q) and then analyze the returned text. For 10-K filings after 2023, also consider extracting section `'1C'` specifically for Cybersecurity.
 
-4.  **XBRL Data:** If the user asks for specific, quantifiable financial data (e.g., "What was the exact revenue?", "How much inventory?"), consider using `get_xbrl_data_as_json` *after* finding the filing. This provides structured data if available.
+4.  **XBRL Data:** If the user asks for specific, quantifiable financial data (e.g., "What was the exact revenue?", "How much inventory?"), consider using `get_xbrl_data_as_json` *after* finding the filing. Use the `htm_url` or `accession_no` from the search results.
 5.  **Synthesize Answer:** Base your final answer *only* on the information retrieved by the tools. If a tool fails or the information isn't found in the extracted sections, state that clearly. Do not make assumptions.
+
+**Final Answer Format:**
+*   **Start your final response with a brief summary of the key actions taken, including the source filing URL.**
+    *   Example (Section Extraction): "Based on searching for [Ticker]'s [Form Type] filings and extracting section [Section ID] from the filing dated [Date] ([Filing URL]), here is the information..."
+    *   Example (XBRL): "I searched for [Ticker]'s [Form Type] filings, found the one dated [Date] ([Filing URL or Accession No]), and extracted XBRL data. Here are the key figures..."
+    *   Example (Mapping): "I mapped the identifier [Identifier] to find the CIK and then searched for filings..." (URL might not be applicable here unless a subsequent search was done).
+*   Then, provide the detailed answer based on the tool results.
+*   If information couldn't be found or a tool failed, clearly state that in the summary and the main answer.
 
 **Example Workflow (10-Q Risk Factors):**
 User: "What are the latest risk factors mentioned in MSFT's 10-Q?"
-1. `search_sec_filings` (query='ticker:MSFT AND formType:"10-Q"', size=1) -> Get URL and confirm formType is "10-Q".
+1. `search_sec_filings` (query='ticker:MSFT AND formType:"10-Q"', size=1) -> Get URL (e.g., `https://www.sec.gov/.../msft-10q_20230930.htm`) and confirm formType is "10-Q".
 2. `extract_filing_section` (filing_url=URL, section='part2item1a') -> Get text of Risk Factors for the 10-Q.
-3. Formulate answer based on the extracted text.
+3. Formulate answer starting with: "Based on searching for MSFT's latest 10-Q filing and extracting section 'part2item1a' (Risk Factors) from the filing dated [Date] ([URL]), here are the key points..." followed by the details.
 """),
         ("user", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),

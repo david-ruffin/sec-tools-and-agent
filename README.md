@@ -2,6 +2,10 @@
 
 ## 1. Project Description
 
+
+This started out as a Google AI Studio with "Gemini 2.5 Pro experimental 03-25" with the following prompt "https://drive.google.com/file/d/1EdwU2KFMjvQGPSdgAan4tM0kCsEGi-g2/view?usp=sharing, https://docs.google.com/spreadsheets/d/1MDCj2vW9bYA5w8WCgDYoCkw0N-5-e2POdi3lMyTo2OI/edit?usp=sharing, https://docs.google.com/spreadsheets/d/1UYD14-tjduVwsms4A5JPApYQ1RqpLzqt3oQe5Moj07g/edit?usp=sharing, https://aistudio.google.com/app/prompts?state=%7B%22ids%22:%5B%221wR4I8ofLLs0g7aUoj34unkmAufQhVMia%22%5D,%22action%22:%22open%22,%22userId%22:%22107950687044865459625%22,%22resourceKeys%22:%7B%7D%7D&usp=sharing" and it turned into this.
+
+
 This project implements an AI-powered agent capable of interacting with U.S. Securities and Exchange Commission (SEC) filings using natural language queries. It leverages the `sec-api-python` library to interface with the sec-api.io service and uses Google's Generative AI models (specifically Gemini Flash) via the LangChain framework to understand user queries, orchestrate tool usage, and synthesize answers.
 
 The primary goal is to allow users (potentially financial analysts or researchers familiar with SEC filings) to ask questions about company filings (e.g., 10-K, 10-Q, 8-K) and receive answers based directly on the data retrieved from the SEC EDGAR database via the available tools.
@@ -20,6 +24,7 @@ The primary goal is to allow users (potentially financial analysts or researcher
 *   **Identifier Mapping:** Utilizes `sec_api.MappingApi` to resolve and map between different company identifiers like Ticker, CIK, CUSIP, Name, etc. (`MapIdentifiersTool`).
 *   **XBRL Data Extraction:** Utilizes `sec_api.XbrlApi` to parse XBRL data from filings and return key financial statements (Income, Balance Sheet, Cash Flow) in a structured JSON format (`GetXbrlDataTool`).
 *   **Agent Framework:** Uses LangChain's `create_tool_calling_agent` and `AgentExecutor` to manage the interaction flow between the LLM, the user query, and the available tools.
+*   **Transparent Response Summary:** The agent begins its final answer with a brief summary of the key actions taken (e.g., ticker identified, filing used, section extracted) and includes the source filing URL to enhance user trust and enable quick validation by domain experts.
 *   **Command-Line Interface:** Accepts user queries directly as command-line arguments for single-shot execution.
 *   **Interactive Mode:** Falls back to an interactive loop if no command-line arguments are provided, allowing multiple questions per session.
 *   **Detailed File Logging:** Logs execution steps, tool calls, RAG process details, API responses (counts), errors, and final outputs to timestamped files in a `logs/` directory using Python's `logging` module and `pytz` for PST timestamps.
@@ -124,7 +129,7 @@ The script can be run in two modes:
 *   **LLM and Agent Setup:**
     *   Initializes the `ChatGoogleGenerativeAI` model.
     *   Creates the list of `tools`.
-    *   Defines the `ChatPromptTemplate` containing the detailed system prompt (instructions, strategy, section identifiers) and placeholders for input and scratchpad.
+    *   Defines the `ChatPromptTemplate` containing the detailed system prompt (instructions, strategy, section identifiers, and final answer summary format with source URL inclusion) and placeholders for input and scratchpad.
     *   Creates the agent using `create_tool_calling_agent`.
     *   Creates the `AgentExecutor` to run the agent-tool loop.
 *   **Main Execution Block (`if __name__ == "__main__":`)**:
@@ -147,11 +152,12 @@ The script can be run in two modes:
 Based on development discussions, potential next steps include:
 
 1.  **User-Facing Transparency:** Modify the system prompt to instruct the agent to include a brief summary of its key steps (e.g., identified ticker, filing used, section extracted) in its final answer to build user trust and allow for quick validation by domain experts.
-2.  **Detailed Internal Logging:** Implement a custom LangChain `BaseCallbackHandler` to capture the LLM's internal thoughts, detailed tool inputs/outputs, and other intermediate steps directly into the log files for more robust debugging and analysis by the developer.
-3.  **Testing Framework:** Implement unit and integration tests using `pytest` to verify the functionality of individual tools and the agent's overall behavior.
-4.  **Linting:** Integrate `flake8` into the development workflow to ensure code quality and consistency.
-5.  **Advanced RAG (Optional):** Explore more sophisticated RAG techniques like HyDE (Hypothetical Document Embeddings) if the current simple RAG proves insufficient for complex queries (currently noted in `@suggestions.txt`).
-6.  **Formal Roadmap:** Define specific goals and milestones in a `@roadmap.txt` file.
+2.  **Tool Usage Reliability:** Address the occasional issue where the LLM-based agent may incorrectly decide not to use available tools, instead generating placeholder responses. Potential solutions include prompt refinement, model switching (from Flash to Pro), or implementing a validation layer that confirms tools were actually used for data-dependent queries.
+3.  **Detailed Internal Logging:** Implement a custom LangChain `BaseCallbackHandler` to capture the LLM's internal thoughts, detailed tool inputs/outputs, and other intermediate steps directly into the log files for more robust debugging and analysis by the developer.
+4.  **Testing Framework:** Implement unit and integration tests using `pytest` to verify the functionality of individual tools and the agent's overall behavior.
+5.  **Linting:** Integrate `flake8` into the development workflow to ensure code quality and consistency.
+6.  **Advanced RAG (Optional):** Explore more sophisticated RAG techniques like HyDE (Hypothetical Document Embeddings) if the current simple RAG proves insufficient for complex queries (currently noted in `@suggestions.txt`).
+7.  **Formal Roadmap:** Define specific goals and milestones in a `@roadmap.txt` file.
 
 ## 10. License
 

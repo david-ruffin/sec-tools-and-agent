@@ -1,0 +1,1 @@
+- Explore implementing advanced RAG techniques like Contextual Retrieval (HyDE) if the current simple RAG (chunking + direct query retrieval) proves insufficient for complex queries or doesn't yield relevant enough results from long documents. Consider the trade-offs in complexity, cost, and latency. (See: https://www.anthropic.com/news/contextual-retrieval-for-rag) 
