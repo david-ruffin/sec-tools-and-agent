@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SEC Filing Analyzer</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            line-height: 1.6; 
+            background-color: #f5f7fa;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background-color: #033c73;
+            color: white;
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .nav-links {
+            margin-top: 10px;
+        }
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            background-color: rgba(255,255,255,0.1);
+            transition: background-color 0.2s;
+        }
+        .nav-links a:hover {
+            background-color: rgba(255,255,255,0.2);
+        }
+        h1 { margin: 0; }
+        p { color: #666; }
+        .content {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .chat-panel, .document-panel {
+            flex: 1;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e1e4e8;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 18px;
+            max-width: 70%;
+        }
+        .user-message {
+            background-color: #e1f5fe;
+            margin-left: auto;
+            border-top-right-radius: 4px;
+        }
+        .bot-message {
+            background-color: #f1f1f1;
+            border-top-left-radius: 4px;
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+        .message-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .message-input button {
+            padding: 10px 15px;
+            background-color: #033c73;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .message-input button:hover {
+            background-color: #022954;
+        }
+        .document-panel iframe {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #e1e4e8;
+            border-radius: 5px;
+        }
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 500px;
+            color: #666;
+            background-color: #f8f9fa;
+            border: 1px dashed #ccc;
+            border-radius: 5px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 10px;
+            color: #666;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #033c73;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .api-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+        /* Feedback styles */
+        .feedback-container {
+            display: none;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 10px 15px;
+            border: 1px solid #e1e4e8;
+        }
+        .rating-options {
+            display: flex;
+            gap: 8px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .rating-option {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+        .rating-option input[type="radio"] {
+            margin-right: 6px;
+        }
+        .rating-option label {
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .rating-description {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 4px;
+            margin-left: 24px;
+        }
+        .feedback-textarea {
+            width: 100%;
+            height: 80px;
+            margin: 10px 0;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .feedback-btn {
+            background-color: #033c73;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .feedback-btn:hover {
+            background-color: #022954;
+        }
+        .new-query-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: none;
+            margin-left: 10px;
+        }
+        .new-query-btn:hover {
+            background-color: #218838;
+        }
+        .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SEC Filing Analyzer</h1>
+            <p style="color: #ccc; margin: 0;">Analyze SEC filings with natural language queries</p>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/test-results">Test Results</a>
+            </div>
+        </header>
+        
+        <div class="content">
+            <div class="chat-panel">
+                <h2>Chat Interface</h2>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot-message">
+                        Hello! I'm an SEC filing analyzer. How can I help you analyze SEC filings today?
+                    </div>
+                </div>
+                <div id="loading" class="loading">
+                    <div class="spinner"></div> Processing...
+                </div>
+                <div class="message-input">
+                    <input type="text" id="userInput" placeholder="Ask about a company's SEC filing..." />
+                    <button id="sendButton">Send</button>
+                    <button id="newQueryButton" class="new-query-btn">New Query</button>
+                </div>
+                
+                <!-- Feedback container for rating analysis results -->
+                <div id="feedbackContainer" class="feedback-container">
+                    <h3>How was this analysis?</h3>
+                    <div class="rating-options">
+                        <div class="rating-option">
+                            <input type="radio" id="rating1" name="rating" value="1" onchange="setRating(1)">
+                            <label for="rating1">Incorrect</label>
+                            <div class="rating-description">The analysis is wrong</div>
+                        </div>
+                        <div class="rating-option">
+                            <input type="radio" id="rating2" name="rating" value="2" onchange="setRating(2)">
+                            <label for="rating2">Partially Correct</label>
+                            <div class="rating-description">Some aspects are right but there are issues</div>
+                        </div>
+                        <div class="rating-option">
+                            <input type="radio" id="rating3" name="rating" value="3" onchange="setRating(3)">
+                            <label for="rating3">Spot On</label>
+                            <div class="rating-description">The analysis is completely accurate</div>
+                        </div>
+                    </div>
+                    <textarea id="feedbackText" class="feedback-textarea" placeholder="Provide additional feedback on this analysis (optional)..."></textarea>
+                    <button id="submitFeedback" class="feedback-btn">Submit Feedback</button>
+                </div>
+            </div>
+            
+            <div class="document-panel">
+                <h2>Filing Document</h2>
+                <div class="placeholder" id="pdfPlaceholder">
+                    The filing document will appear here after you complete your query.
+                </div>
+                <div id="pdfViewer" style="display: none;">
+                    <iframe id="pdfFrame" src=""></iframe>
+                </div>
+            </div>
+        </div>
+        
+        <div class="api-info">
+            <h3>Sample Queries</h3>
+            <ul>
+                <li>"What are Apple's risk factors in their 2023 10-K?"</li>
+                <li>"Tell me about Microsoft's revenue for 2022"</li>
+                <li>"What does Tesla say about competition in their latest 10-K?"</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatMessages = document.getElementById('chatMessages');
+            const userInput = document.getElementById('userInput');
+            const sendButton = document.getElementById('sendButton');
+            const pdfPlaceholder = document.getElementById('pdfPlaceholder');
+            const pdfViewer = document.getElementById('pdfViewer');
+            const pdfFrame = document.getElementById('pdfFrame');
+            const loading = document.getElementById('loading');
+            const feedbackContainer = document.getElementById('feedbackContainer');
+            
+            let currentState = {
+                company: null,
+                formType: null,
+                year: null,
+                query: null,
+                confirmed: false,
+                currentTestId: null,
+                currentRating: 0,
+                queryCompleted: false
+            };
+            
+            // Add a user message to the chat
+            function addUserMessage(message) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message user-message';
+                messageDiv.textContent = message;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Add a bot message to the chat
+            function addBotMessage(message) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message bot-message';
+                messageDiv.textContent = message;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Extract parameters from the query
+            async function extractParameters(query) {
+                try {
+                    const response = await fetch('/api/filing/extract', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: query }),
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to extract parameters');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error extracting parameters:', error);
+                    addBotMessage('Sorry, I had trouble understanding your query. Please try again.');
+                    return null;
+                }
+            }
+            
+            // Analyze the filing
+            async function analyzeFiling(query, company, formType, year) {
+                try {
+                    loading.style.display = 'block';
+                    
+                    // Hide feedback container while loading
+                    feedbackContainer.style.display = 'none';
+                    
+                    // Generate a unique test ID if we're tracking results
+                    const testId = 'test-' + Date.now();
+                    
+                    const response = await fetch('/api/filing/analyze', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            company: company,
+                            formType: formType,
+                            year: year,
+                            testId: testId
+                        }),
+                    });
+                    
+                    loading.style.display = 'none';
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to analyze filing');
+                    }
+                    
+                    const result = await response.json();
+                    
+                    // Add the analysis result as a bot message
+                    addBotMessage(result.analysis);
+                    
+                    // Display the PDF
+                    pdfPlaceholder.style.display = 'none';
+                    pdfViewer.style.display = 'block';
+                    pdfFrame.src = result.pdfPath;
+                    
+                    // Show feedback container
+                    feedbackContainer.style.display = 'block';
+                    
+                    // Store test ID if available
+                    if (result.id) {
+                        currentState.currentTestId = result.id;
+                    } else {
+                        // Generate a test ID if not provided
+                        currentState.currentTestId = 'feedback-' + Date.now();
+                    }
+                    
+                    // Mark query as completed and update UI
+                    currentState.queryCompleted = true;
+                    sendButton.classList.add('disabled');
+                    sendButton.disabled = true;
+                    userInput.disabled = true;
+                    newQueryButton.style.display = 'block';
+                    
+                    // Add a message explaining one-and-done approach
+                    addBotMessage("I've completed your query. Click 'New Query' to ask another question.");
+                    
+                    return result;
+                } catch (error) {
+                    loading.style.display = 'none';
+                    console.error('Error analyzing filing:', error);
+                    addBotMessage(`I encountered an error: ${error.message}`);
+                    return null;
+                }
+            }
+            
+            // Process the user's message
+            async function processUserMessage(message) {
+                if (!message.trim()) return;
+                
+                addUserMessage(message);
+                
+                // If we're waiting for confirmation
+                if (currentState.company && currentState.formType && currentState.year && currentState.query && !currentState.confirmed) {
+                    if (message.toLowerCase().includes('yes') || message.toLowerCase().includes('correct')) {
+                        currentState.confirmed = true;
+                        addBotMessage(`Great! I'll analyze ${currentState.company}'s ${currentState.year} ${currentState.formType} for information about ${currentState.query}. This may take a moment...`);
+                        
+                        // Analyze the filing
+                        await analyzeFiling(currentState.query, currentState.company, currentState.formType, currentState.year);
+                    } else {
+                        // Reset if they didn't confirm
+                        currentState = {
+                            company: null,
+                            formType: null,
+                            year: null,
+                            query: null,
+                            confirmed: false
+                        };
+                        addBotMessage("Okay, let's try again. What would you like to know?");
+                    }
+                    return;
+                }
+                
+                // Extract parameters from the message
+                const params = await extractParameters(message);
+                if (!params) return;
+                
+                // Update current state with any extracted parameters
+                currentState.company = params.company || currentState.company;
+                currentState.formType = params.formType || currentState.formType || '10-K';
+                currentState.year = params.year || currentState.year;
+                currentState.query = message;
+                
+                // If we have missing parameters, ask for them
+                if (!currentState.company) {
+                    addBotMessage("Which company would you like to analyze?");
+                    return;
+                }
+                
+                if (!currentState.year) {
+                    addBotMessage(`Which year's filing would you like to see for ${currentState.company}?`);
+                    return;
+                }
+                
+                // Confirm the query with the user
+                addBotMessage(`I'll search for information about "${currentState.query}" in ${currentState.company}'s ${currentState.year} ${currentState.formType}. Is that correct?`);
+            }
+            
+            // Reset conversation state and UI
+            function resetConversation() {
+                // Reset state
+                currentState = {
+                    company: null,
+                    formType: null,
+                    year: null,
+                    query: null,
+                    confirmed: false,
+                    currentTestId: null,
+                    currentRating: 0,
+                    queryCompleted: false
+                };
+                
+                // Enable input and send button
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                sendButton.classList.remove('disabled');
+                
+                // Hide new query button
+                newQueryButton.style.display = 'none';
+                
+                // Hide feedback container
+                feedbackContainer.style.display = 'none';
+                
+                // Clear rating
+                document.querySelectorAll('input[name="rating"]').forEach(radio => radio.checked = false);
+                document.getElementById('feedbackText').value = '';
+                
+                // Add a message
+                addBotMessage("I'm ready for a new question. What would you like to know?");
+            }
+            
+            // Event listener for send button
+            sendButton.addEventListener('click', function() {
+                if (!currentState.queryCompleted) {
+                    processUserMessage(userInput.value);
+                    userInput.value = '';
+                }
+            });
+            
+            // Event listener for enter key in input field
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !currentState.queryCompleted) {
+                    processUserMessage(userInput.value);
+                    userInput.value = '';
+                }
+            });
+            
+            // Event listener for new query button
+            const newQueryButton = document.getElementById('newQueryButton');
+            newQueryButton.addEventListener('click', function() {
+                resetConversation();
+            });
+            
+            // Rating selection functionality
+            function setRating(rating) {
+                currentState.currentRating = rating;
+                // Radio buttons handle their own state
+            }
+            
+            // Submit feedback
+            document.getElementById('submitFeedback').addEventListener('click', async function() {
+                const feedback = document.getElementById('feedbackText').value;
+                const rating = currentState.currentRating;
+                const testId = currentState.currentTestId;
+                
+                if (!testId) {
+                    alert('No analysis to provide feedback on');
+                    return;
+                }
+                
+                // Create a body with test ID if not already created
+                const requestBody = {
+                    query: currentState.query,
+                    company: currentState.company,
+                    formType: currentState.formType,
+                    year: currentState.year,
+                    testId: testId,
+                    feedback: feedback,
+                    rating: rating
+                };
+                
+                try {
+                    const response = await fetch(`/api/test-results/${testId}/feedback`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            feedback: feedback,
+                            rating: rating
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('Thank you for your feedback!');
+                        feedbackContainer.style.display = 'none';
+                        // Reset the stars and text
+                        setRating(0);
+                        document.getElementById('feedbackText').value = '';
+                    } else {
+                        alert('Error submitting feedback: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Error submitting feedback:', error);
+                    alert('Error submitting feedback: ' + error.message);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

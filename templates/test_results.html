@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SEC Filing Analyzer - Test Results</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #033c73; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        tr:hover { background-color: #f5f5f5; }
+        .success { color: green; }
+        .error { color: red; }
+        .actions { margin-top: 20px; }
+        .actions a { display: inline-block; margin-right: 10px; padding: 8px 15px; background-color: #033c73; color: white; text-decoration: none; border-radius: 4px; }
+        .actions a:hover { background-color: #022954; }
+        .filter-controls { margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; }
+        .filter-controls label { margin-right: 15px; }
+        .filter-controls select, .filter-controls input { padding: 5px; }
+        
+        /* Modal styles */
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 50%; border-radius: 5px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: black; }
+        .rating-options { margin: 10px 0; }
+        .rating-option { margin: 8px 0; display: flex; align-items: flex-start; }
+        .rating-option input { margin-right: 10px; margin-top: 4px; }
+        .rating-option label { display: inline-block; cursor: pointer; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; padding: 8px; box-sizing: border-box; }
+        .submit-btn { background-color: #033c73; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; }
+        .submit-btn:hover { background-color: #022954; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SEC Filing Analyzer - Test Results</h1>
+        <p>View and analyze test results from the SEC Filing Analyzer.</p>
+        
+        <div class="filter-controls">
+            <label>Status: 
+                <select id="statusFilter">
+                    <option value="all">All</option>
+                    <option value="success">Success</option>
+                    <option value="error">Error</option>
+                    <option value="feedback_only">Feedback Only</option>
+                </select>
+            </label>
+            <label>Company: 
+                <input type="text" id="companyFilter" placeholder="Filter by company...">  
+            </label>
+            <button id="applyFilters">Apply Filters</button>
+        </div>
+        
+        <div class="actions">
+            <a href="/api/test-results/export?format=csv" download>Export as CSV</a>
+            <a href="/api/test-results/export?format=json" download>Export as JSON</a>
+            <a href="/api/test-results/export?format=jsonl" download>Export for Fine-tuning (JSONL)</a>
+            <a href="/">Back to Main App</a>
+        </div>
+        
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>Company</th>
+                    <th>Form Type</th>
+                    <th>Year</th>
+                    <th>Query</th>
+                    <th>Status</th>
+                    <th>Rating</th>
+                    <th>Feedback</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                <!-- Results will be loaded here via JavaScript -->
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Feedback Modal -->
+    <div id="feedbackModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeFeedbackModal()">&times;</span>
+            <h2>Submit Feedback</h2>
+            <p id="feedbackInfo">Providing feedback on test result</p>
+            
+            <div class="rating-options">
+                <span>How accurate was the analysis?</span>
+                <div class="rating-option">
+                    <input type="radio" id="rating1" name="rating" value="1">
+                    <label for="rating1">
+                        <strong>⭐ Incorrect</strong> - The analysis is factually wrong or misses the point
+                    </label>
+                </div>
+                <div class="rating-option">
+                    <input type="radio" id="rating2" name="rating" value="2">
+                    <label for="rating2">
+                        <strong>⭐⭐ Partially Correct</strong> - The analysis has some valid points but contains errors
+                    </label>
+                </div>
+                <div class="rating-option">
+                    <input type="radio" id="rating3" name="rating" value="3">
+                    <label for="rating3">
+                        <strong>⭐⭐⭐ Spot On</strong> - The analysis correctly addresses the question
+                    </label>
+                </div>
+            </div>
+            
+            <div>
+                <p>Additional comments:</p>
+                <textarea id="feedbackText" placeholder="Please provide any additional feedback on the analysis result..."></textarea>
+            </div>
+            <input type="hidden" id="testId">
+            <button class="submit-btn" onclick="submitFeedback()">Submit Feedback</button>
+        </div>
+    </div>
+
+    <script>
+        // Feedback modal functions
+        function showFeedbackModal(testId, company, query, rating, feedback) {
+            document.getElementById('feedbackModal').style.display = 'block';
+            document.getElementById('feedbackInfo').textContent = `Providing feedback for query: "${query}" for company: ${company}`;
+            document.getElementById('testId').value = testId;
+            document.getElementById('feedbackText').value = feedback || '';
+            
+            // Reset rating selection
+            document.querySelectorAll('input[name="rating"]').forEach(radio => {
+                radio.checked = false;
+            });
+            
+            // Set rating if exists
+            if (rating) {
+                const ratingRadio = document.querySelector(`input[name="rating"][value="${rating}"]`);
+                if (ratingRadio) {
+                    ratingRadio.checked = true;
+                }
+            }
+        }
+        
+        function closeFeedbackModal() {
+            document.getElementById('feedbackModal').style.display = 'none';
+        }
+        
+        function submitFeedback() {
+            const testId = document.getElementById('testId').value;
+            const feedback = document.getElementById('feedbackText').value;
+            const ratingElement = document.querySelector('input[name="rating"]:checked');
+            const rating = ratingElement ? parseInt(ratingElement.value) : 0;
+            
+            fetch(`/api/test-results/${testId}/feedback`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    feedback: feedback,
+                    rating: rating
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Removed alert - just close the modal and refresh
+                    closeFeedbackModal();
+                    loadResults(); // Refresh results to show updated feedback
+                } else {
+                    alert('Error submitting feedback: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Error submitting feedback: ' + error);
+            });
+        }
+        
+        // Simple function to load test results
+        function loadResults() {
+            const resultsBody = document.getElementById('resultsBody');
+            const statusFilter = document.getElementById('statusFilter').value;
+            const companyFilter = document.getElementById('companyFilter').value.toLowerCase();
+            
+            resultsBody.innerHTML = '<tr><td colspan="10">Loading results...</td></tr>';
+            
+            fetch('/api/test-results')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Test results data:', data);
+                    resultsBody.innerHTML = '';
+                    
+                    if (!data || data.length === 0) {
+                        resultsBody.innerHTML = '<tr><td colspan="10">No test results available</td></tr>';
+                        return;
+                    }
+                    
+                    // Simple filtering
+                    let filteredData = data;
+                    if (statusFilter === 'success') {
+                        filteredData = data.filter(result => result.status === 'success');
+                    } else if (statusFilter === 'error') {
+                        filteredData = data.filter(result => result.status === 'error');
+                    } else if (statusFilter === 'feedback_only') {
+                        filteredData = data.filter(result => result.feedback && result.feedback.trim() !== '');
+                    }
+                    
+                    if (companyFilter) {
+                        filteredData = filteredData.filter(result => 
+                            result.company && result.company.toLowerCase().includes(companyFilter)
+                        );
+                    }
+                    
+                    if (filteredData.length === 0) {
+                        resultsBody.innerHTML = '<tr><td colspan="10">No results match your filters</td></tr>';
+                        return;
+                    }
+                    
+                    // Display the results
+                    filteredData.forEach(result => {
+                        const row = document.createElement('tr');
+                        
+                        // Simple rating display
+                        let ratingDisplay = 'Not rated';
+                        if (result.rating) {
+                            const ratingVal = parseInt(result.rating);
+                            if (ratingVal === 1) ratingDisplay = '⭐ Incorrect';
+                            else if (ratingVal === 2) ratingDisplay = '⭐⭐ Partially Correct';
+                            else if (ratingVal === 3) ratingDisplay = '⭐⭐⭐ Spot On';
+                            else ratingDisplay = `Rating: ${result.rating}`;
+                        }
+                        
+                        // Date formatting
+                        const timestamp = result.timestamp ? new Date(result.timestamp) : new Date();
+                        const dateStr = timestamp.toLocaleString();
+                        
+                        // Escape the feedback to prevent HTML injection
+                        const feedback = result.feedback || '';
+                        const escapedFeedback = feedback.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        
+                        // Create safe query string for onclick handler
+                        const escapedQuery = (result.query || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+                        const escapedCompany = (result.company || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+                        
+                        row.innerHTML = `
+                            <td>${result.id || 'N/A'}</td>
+                            <td>${dateStr}</td>
+                            <td>${result.company || 'N/A'}</td>
+                            <td>${result.formType || 'N/A'}</td>
+                            <td>${result.year || 'N/A'}</td>
+                            <td>${result.query || 'N/A'}</td>
+                            <td class="${result.status === 'success' ? 'success' : 'error'}">${result.status || 'N/A'}</td>
+                            <td>${ratingDisplay}</td>
+                            <td>${escapedFeedback}</td>
+                            <td>
+                                <a href="#" onclick="showFeedbackModal('${result.id}', '${escapedCompany}', '${escapedQuery}', ${result.rating || 0}, '${escapedFeedback}'); return false;">${feedback ? 'Edit' : 'Add'} Feedback</a>
+                            </td>
+                        `;
+                        
+                        resultsBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading results:', error);
+                    resultsBody.innerHTML = `<tr><td colspan="10">Error loading results: ${error.message}</td></tr>`;
+                });
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadResults();
+            document.getElementById('applyFilters').addEventListener('click', loadResults);
+        });
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('feedbackModal');
+            if (event.target === modal) {
+                closeFeedbackModal();
+            }
+        };
+    </script>
+</body>
+</html>
