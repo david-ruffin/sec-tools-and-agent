@@ -265,8 +265,24 @@ def process_query(question):
     # Log the user query
     log_user_interaction(question)
 
-    # Simple confirmation - just echo back the query
-    print(f"\nI'll search for information about \"{question}\". Is that correct?")
+    # Use LLM to create a natural language confirmation
+    llm = ChatOpenAI(temperature=0.3)
+    prompt = f"""Given this query about SEC filings: "{question}"
+    
+    Generate a short, natural language confirmation that I can show to the user.
+    The confirmation should rephrase their question in a slightly different but conversational way.
+    
+    Examples:
+    - For "What are Apple's risk factors in their 2023 10-K?", you might say: "I'll look for Apple's risk factors in their 2023 10-K filing. Is that what you want?"
+    - For "Show me Tesla's revenue for Q2 2023", you might say: "I'll find Tesla's revenue figures from their Q2 2023 report. Is this correct?"
+    
+    Your response should be brief, conversational, and end with a question asking for confirmation.
+    ONLY respond with the confirmation text, nothing else."""
+    
+    rephrased = llm.invoke(prompt).content.strip()
+    
+    # Ask for confirmation
+    print(f"\n{rephrased}")
     confirmation = input("(yes/y/no/n): ").lower()
     
     if confirmation not in ["yes", "y"]:
