@@ -265,6 +265,14 @@ def process_query(question):
     # Log the user query
     log_user_interaction(question)
 
+    # Simple confirmation - just echo back the query
+    print(f"\nI'll search for information about \"{question}\". Is that correct?")
+    confirmation = input("(yes/y/no/n): ").lower()
+    
+    if confirmation not in ["yes", "y"]:
+        print("Query canceled. Please try again with a clearer question.")
+        return
+
     # Pre-process question for relative date terms
     modified_question, date_context = resolve_relative_date_terms(question)
     if modified_question != question:
