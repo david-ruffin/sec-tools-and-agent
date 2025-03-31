@@ -1,0 +1,14 @@
+{
+  "name": "Apple Business Overview",
+  "question": "Summarize Apple's business model from their latest 10-K",
+  "status": "SUCCESS",
+  "metrics": {
+    "original_length": null,
+    "processed_length": null,
+    "compression_ratio": null,
+    "num_chunks": null,
+    "processing_time": null,
+    "rag_triggered": false,
+    "total_time": 19.13457417488098
+  }
+}

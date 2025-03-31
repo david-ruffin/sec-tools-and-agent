@@ -1,0 +1,46 @@
+{
+  "timestamp": "20250331_121110",
+  "test_content_length": 6312,
+  "results": {
+    "What products does the company sell?": {
+      "original_length": 6312,
+      "processed_length": 364,
+      "compression_ratio": 0.057667934093789605,
+      "processing_time": 7.286108016967773,
+      "status": "success",
+      "answer": "The company sells smartphones (iPhone), personal computers (Mac), tablets (iPad), wearables, home products, and accessories. They also offer various services such as AppleCare, iCloud, Apple Pay, Apple Card, Apple Music, Apple Fitness+, Apple News+, Apple Arcade, Apple TV+, and other services.\n\n[This is a processed summary of the original text (6312 characters)]"
+    },
+    "Who are Apple's competitors?": {
+      "original_length": 6312,
+      "processed_length": 451,
+      "compression_ratio": 0.0714512040557668,
+      "processing_time": 2.6764369010925293,
+      "status": "success",
+      "answer": "Apple's competitors include various manufacturers that sell devices based on the Android operating system in the smartphone market, as well as Microsoft Corporation in the tablet market, which sells tablets based on the Windows operating system. In the personal computer market, Apple primarily competes with manufacturers that sell computers based on the Windows operating system.\n\n[This is a processed summary of the original text (6312 characters)]"
+    },
+    "How does Apple manufacture its products?": {
+      "original_length": 6312,
+      "processed_length": 464,
+      "compression_ratio": 0.07351077313054499,
+      "processing_time": 2.4667930603027344,
+      "status": "success",
+      "answer": "Apple manufactures its products primarily through outsourcing partners located mainly in Asia. Additionally, certain products are manufactured in the United States and Ireland. The outsourcing partners manufacture Apple's products using components obtained from suppliers, some of which are exclusive suppliers. Apple works closely with its suppliers to manage supply and mitigate supply risks.\n\n[This is a processed summary of the original text (6312 characters)]"
+    },
+    "What is Apple's approach to intellectual property?": {
+      "original_length": 6312,
+      "processed_length": 514,
+      "compression_ratio": 0.0814321926489227,
+      "processing_time": 2.5371029376983643,
+      "status": "success",
+      "answer": "Apple's approach to intellectual property involves owning and licensing various patents, trademarks, copyrights, trade secrets, and other intellectual property rights. The company also enters into confidentiality and invention assignment agreements with its employees and contractors to protect its rights. Apple maintains comprehensive policies regarding the handling of intellectual property to safeguard its competitive position and success.\n\n[This is a processed summary of the original text (6312 characters)]"
+    },
+    "Summarize Apple's business model": {
+      "original_length": 6312,
+      "processed_length": 650,
+      "compression_ratio": 0.10297845373891001,
+      "processing_time": 4.954698085784912,
+      "status": "success",
+      "answer": "Apple Inc. is a global technology company that designs, manufactures, and sells a range of products including smartphones, personal computers, tablets, wearables, and accessories. They also offer various services such as AppleCare, iCloud, Apple Pay, and digital content stores like the App Store and Apple Music. Apple sells its products through retail stores, online stores, and third-party sellers. The company competes in highly competitive markets by focusing on innovation, introducing new products and services, and ensuring a strong supply chain and manufacturing process.\n\n[This is a processed summary of the original text (6312 characters)]"
+    }
+  }
+}

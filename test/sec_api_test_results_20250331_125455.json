@@ -1,0 +1,123 @@
+{
+  "timestamp": "20250331_125455",
+  "questions": 10,
+  "success_count": 10,
+  "api_usage_counts": {
+    "filing_search": 10,
+    "section_extraction": 2,
+    "xbrl_extraction": 3,
+    "rag_processing": 0
+  },
+  "results": [
+    {
+      "question": "Find the most recent 8-K filings for Tesla.",
+      "status": "SUCCESS",
+      "time": 8.543272972106934,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "What 10-Q filings did Apple submit in 2023?",
+      "status": "SUCCESS",
+      "time": 7.1760337352752686,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Extract the Business Description (Section 1) from Amazon's latest 10-K.",
+      "status": "SUCCESS",
+      "time": 19.367025136947632,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": true,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "What does Intel's latest 10-K say about their properties (Section 2)?",
+      "status": "SUCCESS",
+      "time": 7.322932004928589,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": true,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Show me NVIDIA's Income Statement from their most recent annual report.",
+      "status": "SUCCESS",
+      "time": 7.287426233291626,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": true,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Extract the Balance Sheet from Facebook's most recent 10-K.",
+      "status": "SUCCESS",
+      "time": 4.571074962615967,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "What were Google's total assets and liabilities in their latest 10-K?",
+      "status": "SUCCESS",
+      "time": 6.587453365325928,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": true,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Compare the revenue growth rates of Microsoft, Apple, and Amazon from their latest annual reports.",
+      "status": "SUCCESS",
+      "time": 6.592531204223633,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": true,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Find healthcare companies that mentioned COVID-19 in their latest 10-K risk factors.",
+      "status": "SUCCESS",
+      "time": 4.803747892379761,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    },
+    {
+      "question": "Show me the latest filings for CIK 0000320193.",
+      "status": "SUCCESS",
+      "time": 4.559304237365723,
+      "api_usage": {
+        "filing_search": true,
+        "section_extraction": false,
+        "xbrl_extraction": false,
+        "rag_processing": false
+      }
+    }
+  ]
+}

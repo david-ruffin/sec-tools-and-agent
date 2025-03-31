@@ -31,11 +31,14 @@ def sec_filing_search(query, original_query=None):
             query_obj = {
                 "query": query,
                 "from": "0",
-                "size": "10",
+                "size": "3",  # Reduced from 10 to 3 to prevent token limit issues
                 "sort": [{"filedAt": {"order": "desc"}}]
             }
         elif isinstance(query, dict) and "query" in query:
             # User provided a complete query object
+            # If size is not explicitly set, use 3 as default
+            if "size" not in query:
+                query["size"] = "3"
             query_obj = query
         else:
             return {

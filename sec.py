@@ -26,6 +26,8 @@ from dotenv import load_dotenv
 import dateparser
 from datetime import datetime, timedelta
 import re
+from langchain.callbacks.base import BaseCallbackHandler
+import json
 
 # Load environment variables
 load_dotenv()
@@ -100,6 +102,57 @@ def resolve_relative_date_terms(query):
                 )
 
     return modified_query, date_context
+
+
+class RAGToolHandler(BaseCallbackHandler):
+    """Callback handler that processes tool outputs with RAG."""
+    
+    def on_tool_end(self, output, *, run_id, parent_run_id=None, **kwargs):
+        """Process outputs with RAG if they have RAG metadata."""
+        tool_name = kwargs.get("name", "")
+        
+        # Only process outputs from the section extractor
+        if tool_name != "sec_section_extractor":
+            return
+        
+        # Check if the output is a dictionary with RAG metadata
+        if not isinstance(output, dict) or "metadata" not in output:
+            return
+        
+        metadata = output.get("metadata", {})
+        if not metadata.get("needs_rag_processing", False):
+            return
+        
+        # Get the temporary file path and the original query
+        temp_file_path = metadata.get("temp_file_path", "")
+        input_args = kwargs.get("inputs", {})
+        if isinstance(input_args, str):
+            # Try to parse JSON if it's a string
+            try:
+                input_args = json.loads(input_args)
+            except:
+                input_args = {}
+                
+        original_query = ""
+        if isinstance(input_args, dict):
+            original_query = input_args.get("original_query", "")
+        
+        # Process the section content with RAG
+        if os.path.exists(temp_file_path) and original_query:
+            try:
+                logger.info(f"Processing section content with RAG: {temp_file_path}")
+                processed_result = sec_rag_processor(
+                    query=original_query, 
+                    temp_file_path=temp_file_path
+                )
+                if processed_result:
+                    # Replace the raw text with the processed result
+                    output["raw_text"] = processed_result
+                    logger.info("RAG processing successful")
+                else:
+                    logger.warning("RAG processing returned empty result")
+            except Exception as e:
+                logger.error(f"Error in RAG processing: {str(e)}")
 
 
 def setup_agent():
@@ -221,8 +274,13 @@ def process_query(question):
 
     # Initialize a fresh agent
     logger.info("Creating fresh agent instance")
+    
+    # Create the base agent
     agent = setup_agent()
-
+    
+    # Add the RAG handler to all agent invocations
+    rag_handler = RAGToolHandler()
+    
     # Process the question
     logger.info(f"Agent processing question: {modified_question}")
 
@@ -240,9 +298,10 @@ def process_query(question):
             f"period that was searched."
         )  # noqa: E501
     
-    # Process the query
+    # Process the query with the RAG handler
     response = agent.invoke(
-        {"input": input_with_context}
+        {"input": input_with_context},
+        callbacks=[rag_handler]
     )
     
     logger.info("Agent completed processing")

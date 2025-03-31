@@ -59,43 +59,34 @@ def sec_section_extractor(filing_url, section_code, return_type="text", original
         content_length = len(full_content)
         logger.info(f"Extracted content length: {content_length} characters")
         
-        # Create metadata
-        metadata = {
-            "total_length": content_length,
-            "section_code": section_code,
-            "filing_url": filing_url,
-            "needs_rag_processing": content_length > 3000  # Flag if RAG is needed
-        }
-        
-        # For large content, save to temp file
+        # Always save to temp file for RAG processing
         temp_file_path = None
+        try:
+            fd, temp_file_path = tempfile.mkstemp(prefix=f"sec_section_{section_code}_", suffix=".txt")
+            with os.fdopen(fd, 'w') as temp_file:
+                temp_file.write(full_content)
+            logger.info(f"Saved full content to temp file: {temp_file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save content to temp file: {str(e)}")
+            
+        # Always truncate for display but indicate it's truncated
+        truncated_display = f"{full_content[:3000]}..."
+        truncated_message = "Successfully extracted section"
         if content_length > 3000:
-            try:
-                # Save to temp file for later RAG processing
-                fd, temp_file_path = tempfile.mkstemp(suffix='.txt', prefix=f'sec_section_{section_code}_')
-                with os.fdopen(fd, 'w') as f:
-                    f.write(full_content)
-                logger.info(f"Saved full content to temp file: {temp_file_path}")
-                
-                # Add to metadata
-                metadata["temp_file_path"] = temp_file_path
-                
-                # Create display content with truncation
-                display_content = full_content[:3000] + f"\n\n[Content truncated. Full section is {content_length} characters. Use sec_rag_processor with file_path='{temp_file_path}' to process the full content.]"
-                logger.info(f"Content truncated to 3000 characters (original: {content_length})")
-            except Exception as e:
-                logger.error(f"Error saving to temp file: {str(e)}")
-                # Fall back to regular truncation
-                display_content = full_content[:3000] + f"\n\n[Content truncated. Full section is {content_length} characters. Use sec_rag_processor to process the full content.]"
-        else:
-            display_content = full_content
+            truncated_message += f" {section_code} (truncated)"
+            logger.info(f"Content truncated to 3000 characters (original: {content_length})")
         
-        # Return the content (truncated if necessary)
         return {
-            "status": "success",
-            "message": f"Successfully extracted section {section_code}" + (" (truncated)" if content_length > 3000 else ""),
-            "data": display_content,
-            "metadata": metadata
+            "status": "success", 
+            "message": truncated_message,
+            "data": truncated_display,
+            "metadata": {
+                "total_length": content_length,
+                "section_code": section_code,
+                "filing_url": filing_url,
+                "needs_rag_processing": True,  # Always set to True
+                "temp_file_path": temp_file_path
+            }
         }
         
     except Exception as e:
