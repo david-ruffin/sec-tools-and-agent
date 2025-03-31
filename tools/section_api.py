@@ -1,14 +1,15 @@
 from sec_api import ExtractorApi
 import os
 from dotenv import load_dotenv
-from tools.logger import log_api_call
+from tools.logger import log_api_call, logger
+import tempfile
 
 # Load API key
 load_dotenv()
 SEC_API_KEY = os.getenv("SEC_API_KEY")
 
 @log_api_call
-def sec_section_extractor(filing_url, section_code, return_type="text", mode="auto"):
+def sec_section_extractor(filing_url, section_code, return_type="text", original_query=None):
     """
     Extract a specific section from an SEC filing.
     
@@ -16,7 +17,7 @@ def sec_section_extractor(filing_url, section_code, return_type="text", mode="au
         filing_url: URL to the SEC filing HTML document
         section_code: Section identifier (e.g., '1A' for Risk Factors, '7' for MD&A)
         return_type: Format of extraction ('text' or 'html')
-        mode: How to handle large sections ('auto', 'summary', 'full', 'outline')
+        original_query: The original user query (unused, kept for compatibility)
     
     Returns:
         Dict with section data, metadata and status information
@@ -40,7 +41,8 @@ def sec_section_extractor(filing_url, section_code, return_type="text", mode="au
         # Initialize the Extractor API
         extractor_api = ExtractorApi(api_key=SEC_API_KEY)
         
-        # Extract the section
+        # Extract the full section
+        logger.info(f"Extracting section {section_code} from {filing_url}")
         full_content = extractor_api.get_section(filing_url, section_code, return_type)
         
         # Validate the response
@@ -53,86 +55,55 @@ def sec_section_extractor(filing_url, section_code, return_type="text", mode="au
                 "data": None
             }
         
-        # Get content length
+        # Get content length for logging
         content_length = len(full_content)
+        logger.info(f"Extracted content length: {content_length} characters")
         
-        # Process based on mode and size
-        if content_length > 6000 and mode == "auto":
-            # For large content in auto mode, return outline and first chunk
-            
-            # Simple paragraph chunking - find natural breaks
-            paragraphs = [p for p in full_content.split('\n\n') if p.strip()]
-            
-            # Get the first few paragraphs (introduction/overview)
-            intro = '\n\n'.join(paragraphs[:3])
-            
-            # Create simple metadata
-            metadata = {
-                "total_length": content_length,
-                "paragraph_count": len(paragraphs),
-                "section_code": section_code,
-                "filing_url": filing_url
-            }
-            
-            return {
-                "status": "success",
-                "message": f"Large section split into chunks. Returning intro and metadata.",
-                "data": intro,
-                "metadata": metadata,
-                "has_more": True
-            }
-            
-        elif mode == "summary":
-            # Return just a summary (first few paragraphs and length info)
-            paragraphs = [p for p in full_content.split('\n\n') if p.strip()]
-            summary = '\n\n'.join(paragraphs[:5])  # First 5 paragraphs as summary
-            
-            return {
-                "status": "success",
-                "message": f"Returning summary of section {section_code}",
-                "data": summary,
-                "total_length": content_length,
-                "has_more": content_length > len(summary)
-            }
-            
-        elif mode == "outline":
-            # Extract headings using simple text analysis
-            lines = full_content.split('\n')
-            # Heuristic: Headings are often shorter lines ending with a colon or all caps
-            potential_headings = [line for line in lines if 
-                                  len(line.strip()) < 100 and 
-                                  (line.strip().isupper() or 
-                                   line.strip().endswith(':')) and
-                                   len(line.strip()) > 0]
-            
-            outline = '\n'.join(potential_headings[:15])  # Limit to 15 headings
-            
-            return {
-                "status": "success",
-                "message": f"Extracted outline of section {section_code}",
-                "data": outline,
-                "total_length": content_length,
-                "has_more": True
-            }
-            
-        else:
-            # Return full content with size warning if large
-            message = f"Successfully extracted section {section_code}"
-            if content_length > 6000:
-                message += f" (large section, {content_length} characters)"
+        # Create metadata
+        metadata = {
+            "total_length": content_length,
+            "section_code": section_code,
+            "filing_url": filing_url,
+            "needs_rag_processing": content_length > 3000  # Flag if RAG is needed
+        }
+        
+        # For large content, save to temp file
+        temp_file_path = None
+        if content_length > 3000:
+            try:
+                # Save to temp file for later RAG processing
+                fd, temp_file_path = tempfile.mkstemp(suffix='.txt', prefix=f'sec_section_{section_code}_')
+                with os.fdopen(fd, 'w') as f:
+                    f.write(full_content)
+                logger.info(f"Saved full content to temp file: {temp_file_path}")
                 
-            return {
-                "status": "success",
-                "message": message,
-                "data": full_content,
-                "total_length": content_length,
-                "has_more": False
-            }
+                # Add to metadata
+                metadata["temp_file_path"] = temp_file_path
+                
+                # Create display content with truncation
+                display_content = full_content[:3000] + f"\n\n[Content truncated. Full section is {content_length} characters. Use sec_rag_processor with file_path='{temp_file_path}' to process the full content.]"
+                logger.info(f"Content truncated to 3000 characters (original: {content_length})")
+            except Exception as e:
+                logger.error(f"Error saving to temp file: {str(e)}")
+                # Fall back to regular truncation
+                display_content = full_content[:3000] + f"\n\n[Content truncated. Full section is {content_length} characters. Use sec_rag_processor to process the full content.]"
+        else:
+            display_content = full_content
+        
+        # Return the content (truncated if necessary)
+        return {
+            "status": "success",
+            "message": f"Successfully extracted section {section_code}" + (" (truncated)" if content_length > 3000 else ""),
+            "data": display_content,
+            "metadata": metadata
+        }
         
     except Exception as e:
+        error_message = str(e)
+        logger.error(f"Error extracting section: {error_message}")
         return {
             "status": "error",
-            "message": str(e),
+            "message": error_message,
             "error_type": str(type(e).__name__),
             "filing_url": filing_url if 'filing_url' in locals() else None,
             "section_code": section_code if 'section_code' in locals() else None,

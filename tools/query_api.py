@@ -9,124 +9,85 @@ load_dotenv()
 SEC_API_KEY = os.getenv("SEC_API_KEY")
 
 @log_api_call
-def sec_filing_search(query):
+def sec_filing_search(query, original_query=None):
     """
-    Search for SEC filings using Elasticsearch query syntax.
+    Search for SEC filings using the Query API.
     
     Args:
-        query: String query or dict with query parameters
-              Common fields: ticker, cik, companyName, formType, filedAt
-              
-    Examples:
-        - "ticker:AAPL AND formType:\"10-K\""
-        - {"query": "ticker:MSFT", "from": "0", "size": "10"}
-              
+        query: The Elasticsearch query string (e.g., 'ticker:AAPL AND formType:"10-K"')
+               or dictionary with full query parameters
+        original_query: The original user query
+    
     Returns:
-        Dict with filing results or error information
+        Dict with search results and status information
     """
     try:
-        # Initialize the API client
+        # Initialize the Query API
         query_api = QueryApi(api_key=SEC_API_KEY)
         
-        # Format the query if it's not already a dictionary
+        # Process based on input type
         if isinstance(query, str):
-            query = {
+            # If given a string, create a default query structure with just this query
+            query_obj = {
                 "query": query,
                 "from": "0",
-                "size": "1",
+                "size": "10",
                 "sort": [{"filedAt": {"order": "desc"}}]
             }
-        elif isinstance(query, dict):
-            # Fix for nested 'query' parameter
-            if "query" in query and isinstance(query["query"], dict):
-                # Convert nested query dictionary to Elasticsearch format
-                nested_query = query["query"]
-                query_parts = []
-                
-                # Handle common fields
-                if "ticker" in nested_query:
-                    query_parts.append(f"ticker:{nested_query['ticker']}")
-                
-                if "cik" in nested_query:
-                    query_parts.append(f"cik:{nested_query['cik']}")
-                    
-                if "company_name" in nested_query:
-                    query_parts.append(f"companyName:\"{nested_query['company_name']}\"")
-                
-                if "form_type" in nested_query:
-                    query_parts.append(f"formType:\"{nested_query['form_type']}\"")
-                
-                # Date handling
-                if "filing_year" in nested_query:
-                    year = nested_query["filing_year"]
-                    query_parts.append(f"filedAt:[{year}-01-01 TO {year}-12-31]")
-                
-                # Build full query string
-                if query_parts:
-                    query["query"] = " AND ".join(query_parts)
-                else:
-                    return {
-                        "status": "error",
-                        "message": "Could not convert nested query to Elasticsearch format",
-                        "data": None
-                    }
-            elif "query" not in query:
-                # Try to build a query from common fields
-                query_parts = []
-                
-                # Handle direct fields at the top level
-                if "ticker" in query:
-                    query_parts.append(f"ticker:{query['ticker']}")
-                
-                if "cik" in query:
-                    query_parts.append(f"cik:{query['cik']}")
-                    
-                if "company_name" in query:
-                    query_parts.append(f"companyName:\"{query['company_name']}\"")
-                
-                if "form_type" in query:
-                    query_parts.append(f"formType:\"{query['form_type']}\"")
-                
-                # Date handling
-                if "filing_year" in query:
-                    year = query["filing_year"]
-                    query_parts.append(f"filedAt:[{year}-01-01 TO {year}-12-31]")
-                
-                # Build full query 
-                if query_parts:
-                    query = {
-                        "query": " AND ".join(query_parts),
-                        "from": "0",
-                        "size": "10",
-                        "sort": [{"filedAt": {"order": "desc"}}]
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "message": "Query dictionary must contain a 'query' field or recognizable parameters",
-                        "data": None
-                    }
-        
-        # Call the API
-        result = query_api.get_filings(query)
-        
-        # Verify we got results
-        if not result or "filings" not in result or not result["filings"]:
+        elif isinstance(query, dict) and "query" in query:
+            # User provided a complete query object
+            query_obj = query
+        else:
             return {
-                "status": "no_results",
-                "message": "No SEC filings found matching the criteria",
-                "query": query,
+                "status": "error",
+                "message": "Query must be a string or a dictionary with a 'query' key",
                 "data": None
             }
+            
+        # Execute the query
+        response = query_api.get_filings(query_obj)
         
-        # Return standardized response
+        # Return results with proper format
+        if not response or "filings" not in response:
+            return {
+                "status": "error",
+                "message": "No response from SEC API",
+                "data": None
+            }
+            
+        filings = response.get("filings", [])
+        
+        # Check for empty results
+        if not filings:
+            return {
+                "status": "no_results",
+                "message": f"No filings found for query: {query_obj['query']}",
+                "query": query_obj,
+                "data": None
+            }
+            
+        # Prepare text content for RAG processing
+        raw_text = f"SEC filing search results for query: {query_obj['query']}\n\n"
+        
+        for idx, filing in enumerate(filings):
+            raw_text += f"Result {idx+1}:\n"
+            raw_text += f"Company: {filing.get('companyName', 'N/A')}\n"
+            raw_text += f"Ticker: {filing.get('ticker', 'N/A')}\n"
+            raw_text += f"Form Type: {filing.get('formType', 'N/A')}\n"
+            raw_text += f"Filed At: {filing.get('filedAt', 'N/A')}\n"
+            raw_text += f"Period of Report: {filing.get('periodOfReport', 'N/A')}\n"
+            raw_text += f"Description: {filing.get('description', 'N/A')}\n"
+            raw_text += f"Link: {filing.get('linkToFilingDetails', 'N/A')}\n\n"
+        
+        # Return successful result
         return {
             "status": "success",
-            "message": f"Found {len(result['filings'])} filings",
-            "query": query,
-            "data": result
+            "message": f"Found {len(filings)} filings",
+            "query": query_obj,
+            "data": response,
+            "raw_text": raw_text
         }
-        
+    
     except Exception as e:
         return {
             "status": "error",

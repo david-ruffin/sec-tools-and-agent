@@ -15,6 +15,7 @@ Usage:
 from tools.query_api import sec_filing_search
 from tools.section_api import sec_section_extractor
 from tools.xbrl_api import sec_xbrl_extractor
+from tools.rag_tool import sec_rag_processor
 from tools.logger import logger, log_user_interaction
 from langchain.tools import StructuredTool
 from langchain.agents import AgentType, initialize_agent
@@ -30,6 +31,9 @@ import re
 load_dotenv()
 SEC_API_KEY = os.getenv("SEC_API_KEY")
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+
+# Global LLM instance for RAG
+agent_llm = None
 
 
 def resolve_relative_date_terms(query):
@@ -102,6 +106,13 @@ def setup_agent():
     """Set up and return a langchain agent with SEC tools"""
     logger.info("Setting up SEC agent with tools")
 
+    # Create the LLM
+    llm = ChatOpenAI(temperature=0)
+    
+    # Store the LLM instance globally for RAG use
+    global agent_llm
+    agent_llm = llm
+
     # Create tools using our standardized functions
     search_tool = StructuredTool.from_function(
         func=sec_filing_search,
@@ -119,8 +130,8 @@ def setup_agent():
         func=sec_section_extractor,
         name="sec_section_extractor",
         description=(
-            "Extract a specific section from an SEC filing. For large sections, "
-            "use mode='outline' first, then mode='summary' for key details."
+            "Extract a specific section from an SEC filing. For large sections, you MAY "
+            "need to process the result with sec_rag_processor to extract relevant information."
         ),  # noqa: E501
     )
 
@@ -128,21 +139,24 @@ def setup_agent():
         func=sec_xbrl_extractor,
         name="sec_xbrl_extractor",
         description=(
-            "Extract financial data from SEC filings. To avoid exceeding token "
-            "limits: 1) First call without statement_type to see available "
-            "statements, 2) Then request a specific statement using the exact "
-            "name from the API response (like "
-            "statement_type='StatementsOfIncome'), 3) You can further filter by "
-            "specific metrics like metrics=['Revenue', 'NetIncome']."
+            "Extract financial data from SEC filings. For detailed results, you MAY "
+            "need to process the result with sec_rag_processor to extract relevant information."
         ),  # noqa: E501
     )
-
-    # Create the LLM
-    llm = ChatOpenAI(temperature=0)
+    
+    rag_tool = StructuredTool.from_function(
+        func=sec_rag_processor,
+        name="sec_rag_processor",
+        description=(
+            "Process large text content with Retrieval-Augmented Generation (RAG). "
+            "Use this when a section's content is too large to process directly. "
+            "Pass the text, your query, and optional source information."
+        ),
+    )
 
     # Create agent with all tools
     agent = initialize_agent(
-        [search_tool, section_tool, xbrl_tool],
+        [search_tool, section_tool, xbrl_tool, rag_tool],
         llm,
         agent=AgentType.OPENAI_FUNCTIONS,
         verbose=True,
@@ -154,7 +168,25 @@ If information cannot be found through the SEC-API tools provided to you, respon
 
 IMPORTANT QUERY FORMAT:
 - When searching for SEC filings, use string queries like: "ticker:MSFT AND formType:\"10-K\" AND filedAt:[2023-01-01 TO 2023-12-31]"
-- For specific sections, common codes are: "1A" (Risk Factors), "7" (MD&A), "1" (Business)  # noqa: E501
+- For specific sections, you MUST use the correct section code:
+  * "1A" for Risk Factors
+  * "7" for Management's Discussion and Analysis (MD&A)
+  * "1" for Business
+  * Other valid 10-K section codes: 1B, 1C, 2, 3, 4, 5, 6, 7A, 8, 9, 9A, 9B, 9C, 10, 11, 12, 13, 14, 15
+- Do NOT use descriptive names like "risk factors" - only use the numeric/alphanumeric codes
+
+PROCESSING LARGE CONTENT:
+- When a section is too large, follow these steps:
+  1. First extract the section using sec_section_extractor
+  2. Check if the result metadata contains "needs_rag_processing": true and "temp_file_path" 
+  3. If a temp file path is available, use sec_rag_processor with:
+     - file_path: The path provided in the section extractor response metadata
+     - query: The original user question
+     - source: Descriptive source information (e.g., "section 1A of Apple's 2023 10-K")
+  4. If no temp file path is available but the content is large, you can still use sec_rag_processor with:
+     - text: The truncated text from the section extractor
+     - query: The original user question
+     - source: Descriptive source information
 
 CRITICAL - DATE INFORMATION REQUIREMENT:
 - Always include the specific date information at the beginning of your response
@@ -162,27 +194,11 @@ CRITICAL - DATE INFORMATION REQUIREMENT:
 - This helps users understand exactly which filing you're referencing
 - NEVER omit this date information when relative time terms were used in the query
 
-For XBRL financial data:
-1. First get available statements (call without statement_type)
-2. Then request a specific statement using the EXACT statement name returned in the API response (common names include "StatementsOfIncome", "BalanceSheets", "StatementsOfCashFlows")
-3. Optionally filter for specific metrics (e.g., metrics=["Revenue", "NetIncome"])
-
-For large sections of text:
-1. First use mode='outline' to get the structure
-2. Then use mode='summary' to get key details
-3. Finally, if needed, request specific portions
-
 When presenting financial metrics:
 1. Always include the breakdown components along with totals
 2. Format numerical data consistently (e.g., "$X million" or "$XB")
 3. Include relevant time periods with each figure
-4. Present hierarchical relationships between totals and components
-
-EXAMPLE FORMATS:
-For revenue: "Total revenue: $81.8B for Q3 2023 (Product: $60.6B, Services: $21.2B)"
-For income: "Net income: $19.9B for Q3 2023 (Operating income: $23.1B, Tax expense: $3.2B)"
-
-This approach helps manage context length for complex SEC filings."""
+4. Present hierarchical relationships between totals and components"""
         },
     )
 
@@ -223,8 +239,12 @@ def process_query(question):
             f"{date_context['date_info']}...' to clearly indicate the time "
             f"period that was searched."
         )  # noqa: E501
-
-    response = agent.invoke({"input": input_with_context})
+    
+    # Process the query
+    response = agent.invoke(
+        {"input": input_with_context}
+    )
+    
     logger.info("Agent completed processing")
 
     # Log the agent's response
@@ -264,10 +284,10 @@ def main():
             print("This agent can:")
             print("1. Search for SEC filings")
             print(
-                "2. Extract specific sections from filings (with smart chunking)"
+                "2. Extract specific sections from filings (with smart processing)"
             )
             print(
-                "3. Extract XBRL financial data from filings (with filtering)"
+                "3. Extract XBRL financial data from filings"
             )
             print("-" * 70)
 
